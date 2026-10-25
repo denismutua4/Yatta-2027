@@ -4,7 +4,7 @@ import sqlite3, os
 
 app = Flask(__name__)
 DB = 'campaign.db'
-ADMIN_PIN = "2027"
+ADMIN_PIN = "denismutua2027"
 
 def init_db():
     conn = sqlite3.connect(DB)
