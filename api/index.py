@@ -1,22 +1,10 @@
-from flask import Flask, request, redirect, send_file
-import os
+from flask import Flask, request, redirect
 app = Flask(__name__)
 supporters = []
-
-@app.route('/mutua.jpg')
-def serve_img():
-    # tafuta picha mahali popote
-    for p in ['mutua.jpg','./mutua.jpg','../mutua.jpg','/vercel/path0/mutua.jpg','Yatta-2027/mutua.jpg']:
-        if os.path.exists(p):
-            return send_file(p, mimetype='image/jpeg')
-    # kama haipatikani, tumia GitHub raw
-    return redirect('https://raw.githubusercontent.com/denismutua4/Yatta-2027/main/mutua.jpg')
 
 @app.route('/', methods=['GET','POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET','POST'])
 def home(path):
-    if path == 'mutua.jpg':
-        return serve_img()
     if request.method == 'POST':
         name = request.form.get('name','').strip()
         place = request.form.get('place','').strip()
@@ -43,13 +31,13 @@ body{{margin:0;font-family:Arial;background:#004d26;color:white;text-align:cente
 .btn{{display:block;padding:15px;margin:10px 0;border-radius:12px;text-decoration:none;font-weight:bold;color:white}}
 .wa{{background:#25D366}}.gold{{background:#FFD700;color:#000}}.fb{{background:#1877F2}}.tt{{background:#000}}.ig{{background:linear-gradient(45deg,#f09433,#dc2743)}}
 .pochi{{background:gold;color:#004d26;padding:12px;border-radius:10px;font-weight:bold}}
-img{{width:150px;height:150px;border-radius:50%;border:4px solid gold;object-fit:cover}}
+img{{width:160px;height:160px;border-radius:50%;border:4px solid gold;object-fit:cover;background:white}}
 input,textarea{{width:100%;padding:13px;margin:7px 0;border-radius:10px;border:1px solid #ccc;box-sizing:border-box}}
 .submit{{background:#004d26;color:white;border:none;font-weight:bold;cursor:pointer}}
 </style>
 </head><body>
 <div class="header">
-<img src="/mutua.jpg">
+<img src="https://raw.githubusercontent.com/denismutua4/Yatta-2027/main/mutua.jpg">
 <h1>🔥 MUTUA WA KATANGI 🔥</h1>
 <h2 style="color:gold;margin:0">YATTA MP 2027</h2>
 <p>Yatta Mpya, Maendeleo Kwa Wote</p>
