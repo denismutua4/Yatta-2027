@@ -107,6 +107,10 @@ def photo():
             return send_from_directory(".", name)
     return "", 404
 
+@app.route("/_health")
+def health():
+    return "OK", 200
+
 @app.route("/donate", methods=["POST"])
 def donate():
     conn = get_conn()
