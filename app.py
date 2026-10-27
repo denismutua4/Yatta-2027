@@ -3,7 +3,7 @@ from datetime import datetime
 import sqlite3, os
 
 app = Flask(__name__)
-DB = 'campaign.db'
+DB = '/tmp/campaign.db'
 ADMIN_PIN = "denismutua2027"
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -16,23 +16,29 @@ INSTAGRAM_LINK = "https://www.instagram.com/daudidenismutua"
 def get_conn():
     if DATABASE_URL:
         import psycopg2
-        return psycopg2.connect(DATABASE_URL)
+        return psycopg2.connect(DATABASE_URL, sslmode='require')
     else:
         return sqlite3.connect(DB)
 
 def init_db():
-    conn = get_conn()
-    c = conn.cursor()
-    if DATABASE_URL:
-        c.execute('''CREATE TABLE IF NOT EXISTS donations
-                     (id SERIAL PRIMARY KEY, name TEXT, phone TEXT, ward TEXT, mpesa_code TEXT, amount INTEGER, date TEXT)''')
-    else:
-        c.execute('''CREATE TABLE IF NOT EXISTS donations
-                     (id INTEGER PRIMARY KEY, name TEXT, phone TEXT, ward TEXT, mpesa_code TEXT, amount INTEGER, date TEXT)''')
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_conn()
+        c = conn.cursor()
+        if DATABASE_URL:
+            c.execute('''CREATE TABLE IF NOT EXISTS donations
+                         (id SERIAL PRIMARY KEY, name TEXT, phone TEXT, ward TEXT, mpesa_code TEXT, amount INTEGER, date TEXT)''')
+        else:
+            c.execute('''CREATE TABLE IF NOT EXISTS donations
+                         (id INTEGER PRIMARY KEY, name TEXT, phone TEXT, ward TEXT, mpesa_code TEXT, amount INTEGER, date TEXT)''')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"DB Init failed: {e}")
 
-init_db()
+try:
+    init_db()
+except:
+    pass
 
 HOME_HTML = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MUTUA WA KATANGI - YATTA MP 2027</title>
@@ -93,11 +99,14 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #dd
 
 @app.route("/")
 def home():
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM donations")
-    count = c.fetchone()[0] or 0
-    conn.close()
+    try:
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM donations")
+        count = c.fetchone()[0] or 0
+        conn.close()
+    except:
+        count = 0
     return render_template_string(HOME_HTML, count=count, wa_group=WHATSAPP_GROUP, wa_direct=WHATSAPP_DIRECT, fb=FACEBOOK_LINK, tt=TIKTOK_LINK, ig=INSTAGRAM_LINK)
 
 @app.route("/photo")
@@ -113,17 +122,20 @@ def health():
 
 @app.route("/donate", methods=["POST"])
 def donate():
-    conn = get_conn()
-    c = conn.cursor()
-    date_now = datetime.now().strftime("%d/%m %H:%M")
-    if DATABASE_URL:
-        c.execute("INSERT INTO donations (name,phone,ward,mpesa_code,amount,date) VALUES (%s,%s,%s,%s,%s,%s)",
-                  (request.form['name'], request.form['phone'], request.form['ward'], request.form['mpesa_code'], request.form['amount'], date_now))
-    else:
-        c.execute("INSERT INTO donations VALUES (NULL,?,?,?,?,?,?)",
-                  (request.form['name'], request.form['phone'], request.form['ward'], request.form['mpesa_code'], request.form['amount'], date_now))
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_conn()
+        c = conn.cursor()
+        date_now = datetime.now().strftime("%d/%m %H:%M")
+        if DATABASE_URL:
+            c.execute("INSERT INTO donations (name,phone,ward,mpesa_code,amount,date) VALUES (%s,%s,%s,%s,%s,%s)",
+                      (request.form['name'], request.form['phone'], request.form['ward'], request.form['mpesa_code'], request.form['amount'], date_now))
+        else:
+            c.execute("INSERT INTO donations VALUES (NULL,?,?,?,?,?,?)",
+                      (request.form['name'], request.form['phone'], request.form['ward'], request.form['mpesa_code'], request.form['amount'], date_now))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(e)
     return "<h2 style='text-align:center;color:green;padding:50px'>Asante! Donation Imepokelewa<br><br><a href='/'>Rudi Nyuma</a></h2>"
 
 @app.route("/admin")
@@ -131,16 +143,18 @@ def admin():
     pin = request.args.get('pin','')
     if pin != ADMIN_PIN:
         return f"<h3 style='text-align:center;padding:50px'>Access Denied! Tumia: /admin?pin={ADMIN_PIN}</h3>", 403
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("SELECT * FROM donations ORDER BY id DESC")
-    donations = c.fetchall()
-    c.execute("SELECT SUM(amount), COUNT(*) FROM donations")
-    row = c.fetchone()
-    total=row[0] or 0
-    count=row[1] or 0
-    conn.close()
+    try:
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute("SELECT * FROM donations ORDER BY id DESC")
+        donations = c.fetchall()
+        c.execute("SELECT SUM(amount), COUNT(*) FROM donations")
+        row = c.fetchone()
+        total=row[0] or 0
+        count=row[1] or 0
+        conn.close()
+    except:
+        donations=[]
+        total=0
+        count=0
     return render_template_string(ADMIN_HTML, donations=donations, total=total, count=count)
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
