@@ -38,24 +38,21 @@ def delete_supporter(sid):
 def download():
     key = request.args.get('key')
     if key != ADMIN_PASSWORD:
-        return "<h1>Hautaruhusiwi</h1>"
+        return "<h1 style='text-align:center;margin-top:50px'>🔒 Hautaruhusiwi - Weka password ya admin</h1><script>setTimeout(()=>{let p=prompt('Weka Password:'); if(p) window.location='/download?key='+p},500)</script>"
     supporters = get_supporters()
     sigs = [s for s in supporters if "SIG_ID" in str(s.get('msg',''))]
-    
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["No", "Jina", "ID Number", "Kura Number", "Kituo", "Sahihi"])
     for i, s in enumerate(sigs, 1):
-        msg = s.get('msg','')
-        # msg format: SIG_ID:123 | KURA:456 | KITUO:Matuu | SIG
-        writer.writerow([i, s.get('name'), msg, s.get('place'), "", ""])
-    
+        writer.writerow([i, s.get('name'), s.get('msg'), s.get('place'), "", ""])
     return Response(output.getvalue(), mimetype="text/csv",
         headers={"Content-Disposition": f"attachment;filename=YATTA_1000_SAHIHI_{len(sigs)}.csv"})
 
 @app.route('/', methods=['GET','POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET','POST'])
 def home(path):
+    is_admin = request.args.get('admin') == ADMIN_PASSWORD or request.args.get('key') == ADMIN_PASSWORD
     futa_id = request.args.get('futa')
     admin_key = request.args.get('key')
     if futa_id is not None:
@@ -63,14 +60,13 @@ def home(path):
             return f"<script>alert('Hautaruhusiwi!'); window.location='/';</script>"
         try: delete_supporter(int(futa_id))
         except: pass
-        return redirect('/')
+        return redirect(f'/?admin={ADMIN_PASSWORD}' if is_admin else '/')
 
     if request.method == 'POST':
         name = request.form.get('name','').strip()
         place = request.form.get('place','').strip()
         msg = request.form.get('msg','').strip()
         form_type = request.form.get('form_type','')
-        
         if form_type == 'mchango':
             amount = request.form.get('amount','').strip()
             if name and amount:
@@ -80,7 +76,6 @@ def home(path):
             voter_no = request.form.get('voter_no','').strip()
             station = request.form.get('station','').strip()
             if name and id_no and voter_no:
-                # Hifadhi kama SIG_ID kwa kutambua
                 add_supporter(name, station, f"SIG_ID:{id_no} | KURA:{voter_no} | KITUO:{station} | SIG")
         else:
             if len(msg) > 200: msg = msg[:200]
@@ -89,19 +84,17 @@ def home(path):
         return redirect('/')
 
     supporters = get_supporters()
-    
     michango_html = ""; msgs_html = ""; sigs_html = ""
     total_michango = 0; count_michango = 0; count_msgs = 0; count_sigs = 0
     
     for s in supporters:
         if "SIG_ID" in str(s.get('msg','')):
             count_sigs += 1
-            sigs_html += f"<div style='background:#e8f5e9;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid #25D366;'>✅ <b>{s.get('name')} - {s.get('msg')} - {s.get('place')}</b> <a href='#' onclick=\"let p=prompt('Password:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:3px 8px;border-radius:5px;text-decoration:none;font-size:11px;float:right'>🗑️</a></div>"
+            if is_admin:
+                sigs_html += f"<div style='background:#e8f5e9;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid #25D366;'>✅ <b>{s.get('name')} - {s.get('msg')} - {s.get('place')}</b> <a href='#' onclick=\"let p=prompt('Password:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:3px 8px;border-radius:5px;text-decoration:none;font-size:11px;float:right'>🗑️</a></div>"
             continue
-
         safe_msg = f"{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}"
         is_mchango = "MCHANGO" in str(s.get('place','')).upper() or "MCHANGO" in str(s.get('msg','')).upper()
-        
         if is_mchango:
             count_michango += 1
             try:
@@ -111,16 +104,22 @@ def home(path):
             michango_html += f"<div style='background:#fff8dc;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid gold;'>💰 <b>{safe_msg}</b></div>"
         else:
             count_msgs += 1
-            if count_msgs <= 100: # limit display
+            if count_msgs <= 100:
                 msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{safe_msg}</b></div><a href='#' onclick=\"let p=prompt('Weka Password ya Admin:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
     
-    if not msgs_html: msgs_html = "<p style='color:#999'>Hakuna ujumbe bado - Kuwa wa kwanza!</p>"
-    if not michango_html: michango_html = "<p style='color:#999;font-size:13px'>Hakuna mchango bado - Kuwa wa kwanza!</p>"
-    if not sigs_html: sigs_html = "<p style='color:#999'>Hakuna sahihi bado - Kuwa wa kwanza!</p>"
+    if not msgs_html: msgs_html = "<p style='color:#999'>Hakuna ujumbe bado</p>"
+    if not michango_html: michango_html = "<p style='color:#999'>Hakuna mchango bado</p>"
+    if not sigs_html: sigs_html = "<p style='color:#999'>Hakuna sahihi bado</p>" if is_admin else ""
 
-    michango_dropdown = f"""<div style="margin-top:15px"><button onclick="let x=document.getElementById('mchango-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA WALIOTUMA WOTE ({count_michango})':'▲ FUNGA ORODHA'" style="background:#FFD700;color:#000;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA WALIOTUMA WOTE ({count_michango})</button><div id="mchango-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid gold; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{michango_html}</div></div>"""
-    msgs_dropdown = f"""<div style="margin-top:10px"><button onclick="let x=document.getElementById('msg-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA UJUMBE WOTE ({count_msgs})':'▲ FUNGA UJUMBE'" style="background:#004d26;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA UJUMBE WOTE ({count_msgs})</button><div id="msg-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid #004d26; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{msgs_html}</div></div>"""
-    sigs_dropdown = f"""<div style="margin-top:10px"><button onclick="let x=document.getElementById('sig-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA SAHIHI ZOTE ({count_sigs})':'▲ FUNGA'" style="background:#25D366;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA SAHIHI ZOTE ({count_sigs})</button><div id="sig-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid #25D366; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{sigs_html}</div></div>"""
+    michango_dropdown = f"""<div style="margin-top:15px"><button onclick="let x=document.getElementById('mchango-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA WALIOTUMA WOTE ({count_michango})':'▲ FUNGA'" style="background:#FFD700;color:#000;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA WALIOTUMA WOTE ({count_michango})</button><div id="mchango-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid gold; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{michango_html}</div></div>"""
+    msgs_dropdown = f"""<div style="margin-top:10px"><button onclick="let x=document.getElementById('msg-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA UJUMBE WOTE ({count_msgs})':'▲ FUNGA'" style="background:#004d26;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA UJUMBE WOTE ({count_msgs})</button><div id="msg-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid #004d26; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{msgs_html}</div></div>"""
+    
+    if is_admin:
+        sigs_dropdown = f"""<div style="margin-top:10px"><button onclick="let x=document.getElementById('sig-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA SAHIHI ZOTE ({count_sigs})':'▲ FUNGA'" style="background:#25D366;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA SAHIHI ZOTE ({count_sigs}) - ADMIN</button><div id="sig-list" style="display:block; max-height:500px; overflow-y:auto; border:2px solid #25D366; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{sigs_html}</div></div>"""
+        download_btn = f"""<a href="/download?key={ADMIN_PASSWORD}" style="display:block;margin-top:15px;background:#000;color:#fff;padding:12px;border-radius:10px;text-decoration:none;font-weight:bold">📥 DOWNLOAD LIST YA IEBC (Excel) - {count_sigs} sahihi</a>"""
+    else:
+        sigs_dropdown = """<p style="font-size:12px;color:#666;background:#e8f5e9;padding:10px;border-radius:8px">🔒 <b>Data yako ni siri</b> - ID na Kura hazionyeshwi hadharani. Zitaonekana na admin tu.</p>"""
+        download_btn = """<a href="#" onclick="let p=prompt('Weka Password ya Admin:'); if(p) window.location='/download?key='+p; else alert('Password inahitajika'); return false;" style="display:block;margin-top:15px;background:#444;color:#fff;padding:12px;border-radius:10px;text-decoration:none;font-weight:bold">🔒 DOWNLOAD - Admin Tu</a>"""
 
     return f"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -139,7 +138,8 @@ input,textarea,select{{width:100%;padding:13px;margin:7px 0;border-radius:10px;b
 <script>function copyPochi(){{navigator.clipboard.writeText('0796069040');alert('Namba 0796069040 ime-COPY!');}}</script>
 </head><body>
 <div class="header"><img src="https://raw.githubusercontent.com/denismutua4/Yatta-2027/main/mutua.jpg">
-<h1>🔥 MUTUA WA KATANGI 🔥</h1><h2 style="color:gold;margin:0">YATTA MP 2027 - INDEPENDENT</h2><p>Yatta Mpya, Maendeleo Kwa Wote</p></div>
+<h1>🔥 MUTUA WA KATANGI 🔥</h1><h2 style="color:gold;margin:0">YATTA MP 2027 - INDEPENDENT</h2><p>Yatta Mpya, Maendeleo Kwa Wote</p>
+{'<p style="background:red;padding:10px;border-radius:10px">🔓 ADMIN MODE - Unaona sahihi zote</p>' if is_admin else ''}</div>
 
 <div class="card" style="border:3px solid #25D366;background:#f0fff0">
 <h2 style="color:#004d26;margin:0">✅ SAJILI SAHIHI YA IEBC - INDEPENDENT</h2>
@@ -154,7 +154,7 @@ input,textarea,select{{width:100%;padding:13px;margin:7px 0;border-radius:10px;b
 <input class="submit btn wa" type="submit" value="SAJILI SAHIHI YANGU ✅">
 </form>
 {sigs_dropdown}
-<a href="/download?key={ADMIN_PASSWORD}" style="display:block;margin-top:15px;background:#000;color:#fff;padding:12px;border-radius:10px;text-decoration:none;font-weight:bold">📥 DOWNLOAD LIST YA IEBC (Excel)</a>
+{download_btn}
 </div>
 
 <div class="card"><div class="pochi-box"><h2 style="margin:0;color:#004d26">💰 CHANGIA KAMPENI YETU</h2>
