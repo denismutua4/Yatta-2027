@@ -1,16 +1,45 @@
 from flask import Flask, request, redirect
+import requests
+
 app = Flask(__name__)
-supporters = []
+
+SUPABASE_URL = "https://ccskbtbfbxysocrlzkou.supabase.co"
+SUPABASE_KEY = "sb_publishable_ZizSNK8wSNHTBrnae5i-Mw_muX2QpIN"
+TABLE = "supporters"
+
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
+
+def get_supporters():
+    try:
+        r = requests.get(f"{SUPABASE_URL}/rest/v1/{TABLE}?select=*&order=created_at.desc&limit=50", headers=HEADERS, timeout=10)
+        if r.status_code == 200:
+            return r.json()
+    except: pass
+    return []
+
+def add_supporter(name, place, msg):
+    try:
+        payload = {"name": name, "place": place, "msg": msg[:200]}
+        requests.post(f"{SUPABASE_URL}/rest/v1/{TABLE}", json=payload, headers=HEADERS, timeout=10)
+    except: pass
+
+def delete_supporter(sid):
+    try:
+        requests.delete(f"{SUPABASE_URL}/rest/v1/{TABLE}?id=eq.{sid}", headers=HEADERS, timeout=10)
+    except: pass
 
 @app.route('/', methods=['GET','POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET','POST'])
 def home(path):
-    # Futa ujumbe fulani
-    if request.args.get('futa') is not None:
+    # Futa ujumbe - sasa kwa ID ya kudumu
+    futa_id = request.args.get('futa')
+    if futa_id is not None:
         try:
-            idx = int(request.args.get('futa'))
-            if 0 <= idx < len(supporters):
-                supporters.pop(idx)
+            delete_supporter(int(futa_id))
         except: pass
         return redirect('/')
 
@@ -18,17 +47,19 @@ def home(path):
         name = request.form.get('name','').strip()
         place = request.form.get('place','').strip()
         msg = request.form.get('msg','').strip()
-        # Zuia ujumbe mrefu sana
-        if len(msg) > 200:
-            msg = msg[:200]
+        if len(msg) > 200: msg = msg[:200]
         if name and msg:
-            supporters.insert(0, f"{name} ({place}) - {msg}")
-            if len(supporters) > 50: supporters.pop()
+            add_supporter(name, place, msg)
         return redirect('/')
 
+    supporters = get_supporters()
+    
     msgs_html = ""
-    for i, s in enumerate(supporters[:20]):
-        msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{s}</b></div><a href='/?futa={i}' onclick=\"return confirm('Futa huu ujumbe?')\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
+    for s in supporters[:20]:
+        # s ina id, name, place, msg
+        safe_msg = f"{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}"
+        msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{safe_msg}</b></div><a href='/?futa={s.get('id')}' onclick=\"return confirm('Futa huu ujumbe?')\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
+    
     if not supporters:
         msgs_html = "<p style='color:#999'>Hakuna ujumbe bado - Kuwa wa kwanza! 👇</p>"
 
@@ -55,7 +86,7 @@ input,textarea{{width:100%;padding:13px;margin:7px 0;border-radius:10px;border:1
 <p>Yatta Mpya, Maendeleo Kwa Wote</p>
 </div>
 <div class="card">
-<h2 style="color:#004d26;margin-top:0">SITE IMEWAKA ✅</h2>
+<h2 style="color:#004d26;margin-top:0">SITE IMEWAKA ✅ NA IMEHIFADHIWA</h2>
 <div class="pochi">POCHI: 0796069040<br>Lipa *334# → Pochi → 0796069040</div><br>
 <a class="btn wa" href="https://chat.whatsapp.com/JiuIABnB9gA7iSwlNslTBH">JOIN WHATSAPP GROUP</a>
 <a class="btn gold" href="https://wa.me/254796069040?text=Niko%20tayari%20Yatta%202027">WHATSAPP DIRECT</a>
@@ -73,7 +104,7 @@ input,textarea{{width:100%;padding:13px;margin:7px 0;border-radius:10px;border:1
 </form>
 </div>
 <div class="card">
-<h3 style="color:#004d26">💬 UJUMBE WA WANA-YATTA ({len(supporters)})</h3>
+<h3 style="color:#004d26">💬 UJUMBE WA WANA-YATTA ({len(supporters)}) - HAUPOTEI TENA</h3>
 {msgs_html}
 </div>
 <p style="padding:15px;font-size:14px">© 2027 Mutua wa Katangi<br>yatta-2027.vercel.app</p>
