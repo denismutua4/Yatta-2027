@@ -5,18 +5,30 @@ supporters = []
 @app.route('/', methods=['GET','POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET','POST'])
 def home(path):
+    # Futa ujumbe fulani
+    if request.args.get('futa') is not None:
+        try:
+            idx = int(request.args.get('futa'))
+            if 0 <= idx < len(supporters):
+                supporters.pop(idx)
+        except: pass
+        return redirect('/')
+
     if request.method == 'POST':
         name = request.form.get('name','').strip()
         place = request.form.get('place','').strip()
         msg = request.form.get('msg','').strip()
+        # Zuia ujumbe mrefu sana
+        if len(msg) > 200:
+            msg = msg[:200]
         if name and msg:
             supporters.insert(0, f"{name} ({place}) - {msg}")
             if len(supporters) > 50: supporters.pop()
         return redirect('/')
 
     msgs_html = ""
-    for s in supporters[:20]:
-        msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26'>💬 <b>{s}</b></div>"
+    for i, s in enumerate(supporters[:20]):
+        msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{s}</b></div><a href='/?futa={i}' onclick=\"return confirm('Futa huu ujumbe?')\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
     if not supporters:
         msgs_html = "<p style='color:#999'>Hakuna ujumbe bado - Kuwa wa kwanza! 👇</p>"
 
@@ -56,7 +68,7 @@ input,textarea{{width:100%;padding:13px;margin:7px 0;border-radius:10px;border:1
 <form method="POST">
 <input name="name" placeholder="Jina lako" required>
 <input name="place" placeholder="Mahali (Matuu)" required>
-<textarea name="msg" placeholder="Ujumbe wako..." rows="3" required></textarea>
+<textarea name="msg" placeholder="Ujumbe wako (max 200 letters)..." rows="3" required maxlength="200"></textarea>
 <input class="submit btn" type="submit" value="TUMA UJUMBE 🔥">
 </form>
 </div>
