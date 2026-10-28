@@ -65,13 +65,12 @@ def home(path):
 
     supporters = get_supporters()
     
-    # Tenganisha michango na ujumbe wa kawaida
     michango_html = ""
     msgs_html = ""
     total_michango = 0
     count_michango = 0
     
-    for s in supporters[:30]:
+    for s in supporters[:100]:
         safe_msg = f"{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}"
         is_mchango = "MCHANGO" in str(s.get('place','')).upper() or "MCHANGO" in str(s.get('msg','')).upper()
         
@@ -86,9 +85,22 @@ def home(path):
             msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{safe_msg}</b></div><a href='#' onclick=\"let p=prompt('Weka Password ya Admin:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
     
     if not supporters:
-        msgs_html = "<p style='color:#999'>Hakuna ujumbe bado - Kuwa wa kwanza! 👇</p>"
+        msgs_html = "<p style='color:#999'>Hakuna ujumbe bado</p>"
     if not michango_html:
-        michango_html = "<p style='color:#999;font-size:13px'>Hakuna mchango bado - Kuwa wa kwanza kuchangia!</p>"
+        michango_html = "<p style='color:#999;font-size:13px'>Hakuna mchango bado</p>"
+
+    # DROPDOWN VERSION - hapa ndipo tofauti
+    michango_dropdown = f"""
+    <div style="margin-top:15px">
+        <button onclick="let x=document.getElementById('mchango-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA WALIOTUMA WOTE ({count_michango})':'▲ FUNGA ORODHA'" 
+        style="background:#FFD700;color:#000;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">
+        ▼ ONA WALIOTUMA WOTE ({count_michango})
+        </button>
+        <div id="mchango-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid gold; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">
+            {michango_html}
+        </div>
+    </div>
+    """
 
     return f"""
 <!DOCTYPE html>
@@ -119,7 +131,6 @@ function copyPochi() {{
 <h2 style="color:gold;margin:0">YATTA MP 2027</h2>
 <p>Yatta Mpya, Maendeleo Kwa Wote</p>
 </div>
-
 <div class="card">
 <div class="pochi-box">
 <h2 style="margin:0;color:#004d26">💰 CHANGIA KAMPENI YETU</h2>
@@ -134,17 +145,12 @@ function copyPochi() {{
 <br>
 <a class="btn wa" href="https://chat.whatsapp.com/JiuIABnB9gA7iSwlNslTBH">JOIN WHATSAPP GROUP</a>
 <a class="btn gold" href="https://wa.me/254796069040?text=Niko%20tayari%20Yatta%202027">WHATSAPP DIRECT</a>
-<a class="btn fb" href="https://www.facebook.com/profile.php?id=61594277768769">FACEBOOK</a>
-<a class="btn tt" href="https://www.tiktok.com/@mutuawakatangi">TIKTOK</a>
-<a class="btn ig" href="https://www.instagram.com/daudidenismutua">INSTAGRAM</a>
 </div>
-
 <div class="card">
-<h2 style="color:#004d26">💰 THIBITISHA MCHANGO WAKO</h2>
-<p style="font-size:13px;color:#666">Baada ya kutuma Pochi, jaza hapa ili tuone</p>
+<h2 style="color:#004d26">💰 THIBITISHA MCHANGO</h2>
 <form method="POST">
 <input type="hidden" name="form_type" value="mchango">
-<input name="name" placeholder="Jina lako (kama ulivyotuma M-Pesa)" required>
+<input name="name" placeholder="Jina lako" required>
 <select name="amount" required>
 <option value="">Chagua Kiasi</option>
 <option value="100">100</option><option value="200">200</option><option value="500">500</option>
@@ -152,12 +158,8 @@ function copyPochi() {{
 </select>
 <input class="submit btn gold" type="submit" value="THIBITISHA MCHANGO ✅">
 </form>
-<div style="margin-top:15px">
-<h3 style="color:#004d26;font-size:15px">WALIOTUMA ({count_michango})</h3>
-{michango_html}
+{michango_dropdown}
 </div>
-</div>
-
 <div class="card">
 <h2 style="color:#004d26">✍️ ANDIKA UJUMBE WA SUPPORT</h2>
 <form method="POST">
@@ -168,12 +170,10 @@ function copyPochi() {{
 <input class="submit btn" type="submit" value="TUMA UJUMBE 🔥">
 </form>
 </div>
-
 <div class="card">
 <h3 style="color:#004d26">💬 UJUMBE WA WANA-YATTA ({len(supporters)})</h3>
 {msgs_html}
 </div>
-
-<p style="padding:15px;font-size:14px">© 2027 Mutua wa Katangi<br>yatta-2027.vercel.app</p>
+<p style="padding:15px;font-size:14px">© 2027 Mutua wa Katangi</p>
 </body></html>
 """
