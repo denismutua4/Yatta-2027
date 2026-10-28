@@ -6,6 +6,7 @@ app = Flask(__name__)
 SUPABASE_URL = "https://ccskbtbfbxysocrlzkou.supabase.co"
 SUPABASE_KEY = "sb_publishable_ZizSNK8wSNHTBrnae5i-Mw_muX2QpIN"
 TABLE = "supporters"
+ADMIN_PASSWORD = "Yatta2027Mutua"  # PASSWORD YAKO YA SIRI
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -35,9 +36,12 @@ def delete_supporter(sid):
 @app.route('/', methods=['GET','POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET','POST'])
 def home(path):
-    # Futa ujumbe - sasa kwa ID ya kudumu
+    # Futa - SASA INAULIZA PASSWORD
     futa_id = request.args.get('futa')
+    admin_key = request.args.get('key')
     if futa_id is not None:
+        if admin_key != ADMIN_PASSWORD:
+            return f"<script>alert('Hautaruhusiwi! Password si sahihi.'); window.location='/';</script>"
         try:
             delete_supporter(int(futa_id))
         except: pass
@@ -56,9 +60,9 @@ def home(path):
     
     msgs_html = ""
     for s in supporters[:20]:
-        # s ina id, name, place, msg
         safe_msg = f"{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}"
-        msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{safe_msg}</b></div><a href='/?futa={s.get('id')}' onclick=\"return confirm('Futa huu ujumbe?')\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
+        # Sasa link inauliza password kwa JavaScript
+        msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{safe_msg}</b></div><a href='#' onclick=\"let p=prompt('Weka Password ya Admin:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
     
     if not supporters:
         msgs_html = "<p style='color:#999'>Hakuna ujumbe bado - Kuwa wa kwanza! 👇</p>"
