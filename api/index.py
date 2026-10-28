@@ -1,5 +1,6 @@
-from flask import Flask, request, redirect
+from flask import Flask, request, redirect, Response
 import requests
+import csv, io
 
 app = Flask(__name__)
 
@@ -16,7 +17,7 @@ HEADERS = {
 
 def get_supporters():
     try:
-        r = requests.get(f"{SUPABASE_URL}/rest/v1/{TABLE}?select=*&order=created_at.desc&limit=100", headers=HEADERS, timeout=10)
+        r = requests.get(f"{SUPABASE_URL}/rest/v1/{TABLE}?select=*&order=created_at.desc&limit=2000", headers=HEADERS, timeout=10)
         if r.status_code == 200:
             return r.json()
     except: pass
@@ -24,7 +25,7 @@ def get_supporters():
 
 def add_supporter(name, place, msg):
     try:
-        payload = {"name": name, "place": place, "msg": msg[:200]}
+        payload = {"name": name, "place": place, "msg": msg[:500]}
         requests.post(f"{SUPABASE_URL}/rest/v1/{TABLE}", json=payload, headers=HEADERS, timeout=10)
     except: pass
 
@@ -32,6 +33,25 @@ def delete_supporter(sid):
     try:
         requests.delete(f"{SUPABASE_URL}/rest/v1/{TABLE}?id=eq.{sid}", headers=HEADERS, timeout=10)
     except: pass
+
+@app.route('/download')
+def download():
+    key = request.args.get('key')
+    if key != ADMIN_PASSWORD:
+        return "<h1>Hautaruhusiwi</h1>"
+    supporters = get_supporters()
+    sigs = [s for s in supporters if "SIG_ID" in str(s.get('msg',''))]
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["No", "Jina", "ID Number", "Kura Number", "Kituo", "Sahihi"])
+    for i, s in enumerate(sigs, 1):
+        msg = s.get('msg','')
+        # msg format: SIG_ID:123 | KURA:456 | KITUO:Matuu | SIG
+        writer.writerow([i, s.get('name'), msg, s.get('place'), "", ""])
+    
+    return Response(output.getvalue(), mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment;filename=YATTA_1000_SAHIHI_{len(sigs)}.csv"})
 
 @app.route('/', methods=['GET','POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET','POST'])
@@ -41,8 +61,7 @@ def home(path):
     if futa_id is not None:
         if admin_key != ADMIN_PASSWORD:
             return f"<script>alert('Hautaruhusiwi!'); window.location='/';</script>"
-        try:
-            delete_supporter(int(futa_id))
+        try: delete_supporter(int(futa_id))
         except: pass
         return redirect('/')
 
@@ -55,8 +74,14 @@ def home(path):
         if form_type == 'mchango':
             amount = request.form.get('amount','').strip()
             if name and amount:
-                msg = f"MCHANGO KES {amount} - Thibitisho"
-                add_supporter(name, f"MCHANGO {amount}", msg)
+                add_supporter(name, f"MCHANGO {amount}", f"MCHANGO KES {amount}")
+        elif form_type == 'sig':
+            id_no = request.form.get('id_no','').strip()
+            voter_no = request.form.get('voter_no','').strip()
+            station = request.form.get('station','').strip()
+            if name and id_no and voter_no:
+                # Hifadhi kama SIG_ID kwa kutambua
+                add_supporter(name, station, f"SIG_ID:{id_no} | KURA:{voter_no} | KITUO:{station} | SIG")
         else:
             if len(msg) > 200: msg = msg[:200]
             if name and msg:
@@ -65,13 +90,15 @@ def home(path):
 
     supporters = get_supporters()
     
-    michango_html = ""
-    msgs_html = ""
-    total_michango = 0
-    count_michango = 0
-    count_msgs = 0
+    michango_html = ""; msgs_html = ""; sigs_html = ""
+    total_michango = 0; count_michango = 0; count_msgs = 0; count_sigs = 0
     
-    for s in supporters[:100]:
+    for s in supporters:
+        if "SIG_ID" in str(s.get('msg','')):
+            count_sigs += 1
+            sigs_html += f"<div style='background:#e8f5e9;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid #25D366;'>✅ <b>{s.get('name')} - {s.get('msg')} - {s.get('place')}</b> <a href='#' onclick=\"let p=prompt('Password:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:3px 8px;border-radius:5px;text-decoration:none;font-size:11px;float:right'>🗑️</a></div>"
+            continue
+
         safe_msg = f"{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}"
         is_mchango = "MCHANGO" in str(s.get('place','')).upper() or "MCHANGO" in str(s.get('msg','')).upper()
         
@@ -84,109 +111,73 @@ def home(path):
             michango_html += f"<div style='background:#fff8dc;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid gold;'>💰 <b>{safe_msg}</b></div>"
         else:
             count_msgs += 1
-            msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{safe_msg}</b></div><a href='#' onclick=\"let p=prompt('Weka Password ya Admin:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
+            if count_msgs <= 100: # limit display
+                msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{safe_msg}</b></div><a href='#' onclick=\"let p=prompt('Weka Password ya Admin:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
     
-    if not msgs_html:
-        msgs_html = "<p style='color:#999'>Hakuna ujumbe bado - Kuwa wa kwanza!</p>"
-    if not michango_html:
-        michango_html = "<p style='color:#999;font-size:13px'>Hakuna mchango bado - Kuwa wa kwanza!</p>"
+    if not msgs_html: msgs_html = "<p style='color:#999'>Hakuna ujumbe bado - Kuwa wa kwanza!</p>"
+    if not michango_html: michango_html = "<p style='color:#999;font-size:13px'>Hakuna mchango bado - Kuwa wa kwanza!</p>"
+    if not sigs_html: sigs_html = "<p style='color:#999'>Hakuna sahihi bado - Kuwa wa kwanza!</p>"
 
-    michango_dropdown = f"""
-    <div style="margin-top:15px">
-        <button onclick="let x=document.getElementById('mchango-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA WALIOTUMA WOTE ({count_michango})':'▲ FUNGA ORODHA'" 
-        style="background:#FFD700;color:#000;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">
-        ▼ ONA WALIOTUMA WOTE ({count_michango})
-        </button>
-        <div id="mchango-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid gold; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">
-            {michango_html}
-        </div>
-    </div>
-    """
-
-    msgs_dropdown = f"""
-    <div style="margin-top:10px">
-        <button onclick="let x=document.getElementById('msg-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA UJUMBE WOTE ({count_msgs})':'▲ FUNGA UJUMBE'" 
-        style="background:#004d26;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">
-        ▼ ONA UJUMBE WOTE ({count_msgs})
-        </button>
-        <div id="msg-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid #004d26; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">
-            {msgs_html}
-        </div>
-    </div>
-    """
+    michango_dropdown = f"""<div style="margin-top:15px"><button onclick="let x=document.getElementById('mchango-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA WALIOTUMA WOTE ({count_michango})':'▲ FUNGA ORODHA'" style="background:#FFD700;color:#000;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA WALIOTUMA WOTE ({count_michango})</button><div id="mchango-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid gold; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{michango_html}</div></div>"""
+    msgs_dropdown = f"""<div style="margin-top:10px"><button onclick="let x=document.getElementById('msg-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA UJUMBE WOTE ({count_msgs})':'▲ FUNGA UJUMBE'" style="background:#004d26;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA UJUMBE WOTE ({count_msgs})</button><div id="msg-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid #004d26; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{msgs_html}</div></div>"""
+    sigs_dropdown = f"""<div style="margin-top:10px"><button onclick="let x=document.getElementById('sig-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA SAHIHI ZOTE ({count_sigs})':'▲ FUNGA'" style="background:#25D366;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA SAHIHI ZOTE ({count_sigs})</button><div id="sig-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid #25D366; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{sigs_html}</div></div>"""
 
     return f"""
-<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MUTUA WA KATANGI - YATTA MP 2027</title>
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MUTUA WA KATANGI - YATTA MP 2027 INDEPENDENT</title>
 <style>
 body{{margin:0;font-family:Arial;background:#004d26;color:white;text-align:center}}
 .header{{padding:20px 15px}}.card{{background:white;color:#222;padding:20px;border-radius:20px;margin:15px}}
 .btn{{display:block;padding:14px;margin:8px 0;border-radius:12px;text-decoration:none;font-weight:bold;color:white;cursor:pointer;border:none;width:100%;box-sizing:border-box}}
-.wa{{background:#25D366}}.gold{{background:#FFD700;color:#000}}.fb{{background:#1877F2}}.tt{{background:#000}}.ig{{background:linear-gradient(45deg,#f09433,#dc2743)}}
+.wa{{background:#25D366}}.gold{{background:#FFD700;color:#000}}
 .pochi-box{{background:linear-gradient(135deg,#FFD700,#FFA500);color:#000;padding:20px;border-radius:15px;font-weight:bold;border:3px solid #004d26}}
 .copy-btn{{background:#004d26;color:white;padding:10px 15px;border-radius:8px;border:none;font-weight:bold;cursor:pointer;margin:5px}}
 img{{width:160px;height:160px;border-radius:50%;border:4px solid gold;object-fit:cover;background:white}}
 input,textarea,select{{width:100%;padding:13px;margin:7px 0;border-radius:10px;border:1px solid #ccc;box-sizing:border-box}}
 .submit{{background:#004d26;color:white;border:none;font-weight:bold;cursor:pointer}}
 </style>
-<script>
-function copyPochi() {{
-  navigator.clipboard.writeText('0796069040');
-  alert('Namba 0796069040 ime-COPY! Nenda M-Pesa *334#');
-}}
-</script>
+<script>function copyPochi(){{navigator.clipboard.writeText('0796069040');alert('Namba 0796069040 ime-COPY!');}}</script>
 </head><body>
-<div class="header">
-<img src="https://raw.githubusercontent.com/denismutua4/Yatta-2027/main/mutua.jpg">
-<h1>🔥 MUTUA WA KATANGI 🔥</h1>
-<h2 style="color:gold;margin:0">YATTA MP 2027</h2>
-<p>Yatta Mpya, Maendeleo Kwa Wote</p>
+<div class="header"><img src="https://raw.githubusercontent.com/denismutua4/Yatta-2027/main/mutua.jpg">
+<h1>🔥 MUTUA WA KATANGI 🔥</h1><h2 style="color:gold;margin:0">YATTA MP 2027 - INDEPENDENT</h2><p>Yatta Mpya, Maendeleo Kwa Wote</p></div>
+
+<div class="card" style="border:3px solid #25D366;background:#f0fff0">
+<h2 style="color:#004d26;margin:0">✅ SAJILI SAHIHI YA IEBC - INDEPENDENT</h2>
+<p style="font-size:13px">Tunahitaji sahihi 1000 za Yatta - Weka ID na Kura No.</p>
+<p style="font-size:14px;background:#004d26;color:white;padding:10px;border-radius:10px">📊 Sahihi: <b>{count_sigs} / 1000</b> ({int(count_sigs/10) if count_sigs<=1000 else 100}%)</p>
+<form method="POST">
+<input type="hidden" name="form_type" value="sig">
+<input name="name" placeholder="Jina kamili kama ID" required>
+<input name="id_no" placeholder="Namba ya ID (12345678)" required type="number">
+<input name="voter_no" placeholder="Namba ya Kura" required>
+<input name="station" placeholder="Kituo cha Kura (Matuu Primary)" required>
+<input class="submit btn wa" type="submit" value="SAJILI SAHIHI YANGU ✅">
+</form>
+{sigs_dropdown}
+<a href="/download?key={ADMIN_PASSWORD}" style="display:block;margin-top:15px;background:#000;color:#fff;padding:12px;border-radius:10px;text-decoration:none;font-weight:bold">📥 DOWNLOAD LIST YA IEBC (Excel)</a>
 </div>
-<div class="card">
-<div class="pochi-box">
-<h2 style="margin:0;color:#004d26">💰 CHANGIA KAMPENI YETU</h2>
-<p style="margin:5px 0">POCHI LA BIASHARA</p>
-<h1 style="margin:10px 0;letter-spacing:2px">0796069040</h1>
-<p style="margin:5px 0;font-size:14px">Jina: Mutua wa Katangi</p>
-<button class="copy-btn" onclick="copyPochi()">📋 COPY NAMBA</button>
+
+<div class="card"><div class="pochi-box"><h2 style="margin:0;color:#004d26">💰 CHANGIA KAMPENI YETU</h2>
+<p style="margin:5px 0">POCHI LA BIASHARA</p><h1 style="margin:10px 0;letter-spacing:2px">0796069040</h1>
+<button class="copy-btn" onclick="copyPochi()">📋 COPY</button>
 <a href="tel:*334%23" class="copy-btn" style="text-decoration:none;display:inline-block;background:#000">📞 LIPA *334#</a>
-<p style="font-size:12px;margin-top:10px;color:#333">Lipa na M-Pesa: Lipa na Pochi -> Biashara -> 0796069040</p>
-<p style="font-size:13px;background:white;padding:8px;border-radius:8px;margin-top:10px">✅ Michango: {count_michango} | 💵 Jumla: KES {total_michango}</p>
-</div>
-<br>
-<a class="btn wa" href="https://chat.whatsapp.com/JiuIABnB9gA7iSwlNslTBH">JOIN WHATSAPP GROUP</a>
-<a class="btn gold" href="https://wa.me/254796069040?text=Niko%20tayari%20Yatta%202027">WHATSAPP DIRECT</a>
-</div>
-<div class="card">
-<h2 style="color:#004d26">💰 THIBITISHA MCHANGO</h2>
-<form method="POST">
-<input type="hidden" name="form_type" value="mchango">
+<p style="font-size:13px;background:white;padding:8px;border-radius:8px;margin-top:10px">✅ Michango: {count_michango} | 💵 Jumla: KES {total_michango}</p></div>
+<br><a class="btn wa" href="https://chat.whatsapp.com/JiuIABnB9gA7iSwlNslTBH">JOIN WHATSAPP GROUP</a>
+<a class="btn gold" href="https://wa.me/254796069040?text=Niko%20tayari%20Yatta%202027">WHATSAPP DIRECT</a></div>
+
+<div class="card"><h2 style="color:#004d26">💰 THIBITISHA MCHANGO</h2>
+<form method="POST"><input type="hidden" name="form_type" value="mchango">
 <input name="name" placeholder="Jina lako" required>
-<select name="amount" required>
-<option value="">Chagua Kiasi</option>
-<option value="100">100</option><option value="200">200</option><option value="500">500</option>
-<option value="1000">1,000</option><option value="2000">2,000</option><option value="5000">5,000</option><option value="10000">10,000+</option>
-</select>
-<input class="submit btn gold" type="submit" value="THIBITISHA MCHANGO ✅">
-</form>
-{michango_dropdown}
-</div>
-<div class="card">
-<h2 style="color:#004d26">✍️ ANDIKA UJUMBE WA SUPPORT</h2>
-<form method="POST">
-<input type="hidden" name="form_type" value="ujumbe">
-<input name="name" placeholder="Jina lako" required>
-<input name="place" placeholder="Mahali (Matuu)" required>
+<select name="amount" required><option value="">Chagua Kiasi</option><option value="100">100</option><option value="200">200</option><option value="500">500</option><option value="1000">1,000</option><option value="2000">2,000</option><option value="5000">5,000</option><option value="10000">10,000+</option></select>
+<input class="submit btn gold" type="submit" value="THIBITISHA MCHANGO ✅"></form>{michango_dropdown}</div>
+
+<div class="card"><h2 style="color:#004d26">✍️ ANDIKA UJUMBE WA SUPPORT</h2>
+<form method="POST"><input type="hidden" name="form_type" value="ujumbe">
+<input name="name" placeholder="Jina lako" required><input name="place" placeholder="Mahali (Matuu)" required>
 <textarea name="msg" placeholder="Ujumbe wako..." rows="3" required maxlength="200"></textarea>
-<input class="submit btn" type="submit" value="TUMA UJUMBE 🔥">
-</form>
-</div>
-<div class="card">
-<h3 style="color:#004d26">💬 UJUMBE WA WANA-YATTA ({count_msgs})</h3>
-{msgs_dropdown}
-</div>
-<p style="padding:15px;font-size:14px">© 2027 Mutua wa Katangi</p>
-</body></html>
+<input class="submit btn" type="submit" value="TUMA UJUMBE 🔥"></form></div>
+
+<div class="card"><h3 style="color:#004d26">💬 UJUMBE WA WANA-YATTA ({count_msgs})</h3>{msgs_dropdown}</div>
+
+<p style="padding:15px;font-size:14px">© 2027 Mutua wa Katangi - INDEPENDENT</p></body></html>
 """
