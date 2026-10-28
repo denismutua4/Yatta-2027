@@ -55,7 +55,7 @@ def home(path):
         if form_type == 'mchango':
             amount = request.form.get('amount','').strip()
             if name and amount:
-                msg = f"💰 MCHANGO KES {amount} - Thibitisho"
+                msg = f"MCHANGO KES {amount} - Thibitisho"
                 add_supporter(name, f"MCHANGO {amount}", msg)
         else:
             if len(msg) > 200: msg = msg[:200]
@@ -69,6 +69,7 @@ def home(path):
     msgs_html = ""
     total_michango = 0
     count_michango = 0
+    count_msgs = 0
     
     for s in supporters[:100]:
         safe_msg = f"{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}"
@@ -82,14 +83,14 @@ def home(path):
             except: pass
             michango_html += f"<div style='background:#fff8dc;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid gold;'>💰 <b>{safe_msg}</b></div>"
         else:
+            count_msgs += 1
             msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{safe_msg}</b></div><a href='#' onclick=\"let p=prompt('Weka Password ya Admin:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
     
-    if not supporters:
-        msgs_html = "<p style='color:#999'>Hakuna ujumbe bado</p>"
+    if not msgs_html:
+        msgs_html = "<p style='color:#999'>Hakuna ujumbe bado - Kuwa wa kwanza!</p>"
     if not michango_html:
-        michango_html = "<p style='color:#999;font-size:13px'>Hakuna mchango bado</p>"
+        michango_html = "<p style='color:#999;font-size:13px'>Hakuna mchango bado - Kuwa wa kwanza!</p>"
 
-    # DROPDOWN VERSION - hapa ndipo tofauti
     michango_dropdown = f"""
     <div style="margin-top:15px">
         <button onclick="let x=document.getElementById('mchango-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA WALIOTUMA WOTE ({count_michango})':'▲ FUNGA ORODHA'" 
@@ -98,6 +99,18 @@ def home(path):
         </button>
         <div id="mchango-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid gold; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">
             {michango_html}
+        </div>
+    </div>
+    """
+
+    msgs_dropdown = f"""
+    <div style="margin-top:10px">
+        <button onclick="let x=document.getElementById('msg-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA UJUMBE WOTE ({count_msgs})':'▲ FUNGA UJUMBE'" 
+        style="background:#004d26;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">
+        ▼ ONA UJUMBE WOTE ({count_msgs})
+        </button>
+        <div id="msg-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid #004d26; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">
+            {msgs_html}
         </div>
     </div>
     """
@@ -171,8 +184,8 @@ function copyPochi() {{
 </form>
 </div>
 <div class="card">
-<h3 style="color:#004d26">💬 UJUMBE WA WANA-YATTA ({len(supporters)})</h3>
-{msgs_html}
+<h3 style="color:#004d26">💬 UJUMBE WA WANA-YATTA ({count_msgs})</h3>
+{msgs_dropdown}
 </div>
 <p style="padding:15px;font-size:14px">© 2027 Mutua wa Katangi</p>
 </body></html>
