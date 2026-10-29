@@ -8,7 +8,7 @@ app = Flask(__name__)
 SUPABASE_URL = "https://ccskbtbfbxysocrlzkou.supabase.co"
 SUPABASE_KEY = "sb_publishable_ZizSNK8wSNHTBrnae5i-Mw_muX2QpIN"
 TABLE = "supporters"
-VISITOR_TABLE = "visitors"  # TABLE MPYA YA VISITORS
+VISITOR_TABLE = "visitors"
 ADMIN_PASSWORD = "Yatta2027Mutua"
 
 HEADERS = {
@@ -34,15 +34,11 @@ def get_visitors():
     return []
 
 def log_visitor(req):
-    """Hii ndio inahesabu kila mtu anaingia"""
     try:
-        ip = req.headers.get('X-Forwarded-For', req.remote_addr)
-        agent = req.headers.get('User-Agent','')[:200]
-        payload = {
-            "ip": str(ip)[:50],
-            "place": agent,  # tunaweka phone type hapa
-            "msg": f"VISIT | {req.headers.get('Referer','Direct')}"
-        }
+        ip = req.headers.get('X-Forwarded-For', req.remote_addr) or "unknown"
+        agent = req.headers.get('User-Agent','')[:150]
+        ref = req.headers.get('Referer','Direct')[:100]
+        payload = {"name": "VISITOR", "place": str(ip)[:50], "msg": f"VIEW | {agent} | {ref}"}
         requests.post(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}", json=payload, headers=HEADERS, timeout=3)
     except: pass
 
@@ -75,24 +71,144 @@ def download():
 @app.route('/', methods=['GET','POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET','POST'])
 def home(path):
-    # LOG KILA VISITOR
-    if request.method == 'GET':
+    if request.method == 'GET' and 'favicon' not in path:
         log_visitor(request)
 
     is_admin = request.args.get('admin') == ADMIN_PASSWORD or request.args.get('key') == ADMIN_PASSWORD
-    # ... (code yako yote ya mwanzo inaendelea hapa)
+    futa_id = request.args.get('futa')
+    admin_key = request.args.get('key')
+    if futa_id is not None:
+        if admin_key != ADMIN_PASSWORD:
+            return f"<script>alert('Hautaruhusiwi!'); window.location='/';</script>"
+        try: delete_supporter(int(futa_id))
+        except: pass
+        return redirect(f'/?admin={ADMIN_PASSWORD}' if is_admin else '/')
 
-    # Hii ndio sehemu mpya ya admin - ona visitors
-    if is_admin:
-        visitors = get_visitors()
-        visitors_html = ""
-        for v in visitors[:100]:
-            visitors_html += f"<div style='background:#e3f2fd;padding:8px;margin:4px 0;border-radius:8px;font-size:12px;text-align:left'>👁️ {v.get('created_at','')} - IP: {v.get('ip','')} - {v.get('place','')[:60]}</div>"
-    else:
-        visitors = []
-        visitors_html = ""
+    if request.method == 'POST':
+        name = request.form.get('name','').strip()
+        place = request.form.get('place','').strip()
+        msg = request.form.get('msg','').strip()
+        form_type = request.form.get('form_type','')
+        if form_type == 'mchango':
+            amount = request.form.get('amount','').strip()
+            if name and amount:
+                add_supporter(name, f"MCHANGO {amount}", f"MCHANGO KES {amount}")
+        elif form_type == 'sig':
+            id_no = request.form.get('id_no','').strip()
+            voter_no = request.form.get('voter_no','').strip()
+            station = request.form.get('station','').strip()
+            if name and id_no and voter_no:
+                add_supporter(name, station, f"SIG_ID:{id_no} | KURA:{voter_no} | KITUO:{station} | SIG")
+        else:
+            if len(msg) > 200: msg = msg[:200]
+            if name and msg:
+                add_supporter(name, place, msg)
+        return redirect('/')
 
     supporters = get_supporters()
-    # ... (endelea na code yako yote)
-    # KWENYE RETURN HTML YAKO ONGEZA HII NDANI YA ADMIN MODE:
-    # <div class="card"><h3>👁️ WALIOTEMBELEA WEBSITE ({len(visitors)})</h3>{visitors_html}</div>
+    visitors = get_visitors() if is_admin else []
+    
+    michango_html = ""; msgs_html = ""; sigs_html = ""; visitors_html = ""
+    total_michango = 0; count_michango = 0; count_msgs = 0; count_sigs = 0
+    
+    for v in visitors[:100]:
+        visitors_html += f"<div style='background:#e3f2fd;padding:8px;margin:4px 0;border-radius:8px;font-size:11px;text-align:left'>👁️ {str(v.get('created_at',''))[:19]} | IP: {v.get('place','')} | {v.get('msg','')[:80]}</div>"
+    if not visitors_html and is_admin:
+        visitors_html = "<p style='color:#999'>Hakuna visitors bado - tengeneza table 'visitors' Supabase</p>"
+
+    for s in supporters:
+        if "SIG_ID" in str(s.get('msg','')):
+            count_sigs += 1
+            if is_admin:
+                sigs_html += f"<div style='background:#e8f5e9;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid #25D366;'>✅ <b>{s.get('name')} - {s.get('msg')} - {s.get('place')}</b> <a href='#' onclick=\"let p=prompt('Password:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:3px 8px;border-radius:5px;text-decoration:none;font-size:11px;float:right'>🗑️</a></div>"
+            continue
+        safe_msg = f"{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}"
+        is_mchango = "MCHANGO" in str(s.get('place','')).upper() or "MCHANGO" in str(s.get('msg','')).upper()
+        if is_mchango:
+            count_michango += 1
+            try:
+                amt_str = ''.join(filter(str.isdigit, s.get('place','')))
+                if amt_str: total_michango += int(amt_str)
+            except: pass
+            michango_html += f"<div style='background:#fff8dc;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid gold;'>💰 <b>{safe_msg}</b></div>"
+        else:
+            count_msgs += 1
+            if count_msgs <= 100:
+                msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;display:flex;justify-content:space-between;align-items:center'><div style='flex:1'>💬 <b>{safe_msg}</b></div><a href='#' onclick=\"let p=prompt('Weka Password:'); if(p) window.location='/?futa={s.get('id')}&key='+p; return false;\" style='background:red;color:white;padding:5px 10px;border-radius:6px;text-decoration:none;font-size:12px;margin-left:10px'>🗑️</a></div>"
+    
+    if not msgs_html: msgs_html = "<p style='color:#999'>Hakuna ujumbe bado</p>"
+    if not michango_html: michango_html = "<p style='color:#999'>Hakuna mchango bado</p>"
+    if not sigs_html: sigs_html = "<p style='color:#999'>Hakuna sahihi bado</p>" if is_admin else ""
+
+    michango_dropdown = f"""<div style="margin-top:15px"><button onclick="let x=document.getElementById('mchango-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA WALIOTUMA WOTE ({count_michango})':'▲ FUNGA'" style="background:#FFD700;color:#000;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA WALIOTUMA WOTE ({count_michango})</button><div id="mchango-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid gold; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{michango_html}</div></div>"""
+    msgs_dropdown = f"""<div style="margin-top:10px"><button onclick="let x=document.getElementById('msg-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA UJUMBE WOTE ({count_msgs})':'▲ FUNGA'" style="background:#004d26;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA UJUMBE WOTE ({count_msgs})</button><div id="msg-list" style="display:none; max-height:350px; overflow-y:auto; border:2px solid #004d26; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{msgs_html}</div></div>"""
+    
+    if is_admin:
+        sigs_dropdown = f"""<div style="margin-top:10px"><button onclick="let x=document.getElementById('sig-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA SAHIHI ZOTE ({count_sigs})':'▲ FUNGA'" style="background:#25D366;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA SAHIHI ZOTE ({count_sigs}) - ADMIN</button><div id="sig-list" style="display:block; max-height:500px; overflow-y:auto; border:2px solid #25D366; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{sigs_html}</div></div>"""
+        download_btn = f"""<a href="/download?key={ADMIN_PASSWORD}" style="display:block;margin-top:15px;background:#000;color:#fff;padding:12px;border-radius:10px;text-decoration:none;font-weight:bold">📥 DOWNLOAD LIST YA IEBC (Excel) - {count_sigs} sahihi</a>"""
+        visitors_dropdown = f"""<div style="margin-top:15px"><button onclick="let x=document.getElementById('vis-list'); x.style.display=x.style.display=='none'?'block':'none'; this.innerText=x.style.display=='none'?'▼ ONA WALIOTEMBELEA WEBSITE ({len(visitors)})':'▲ FUNGA'" style="background:#2196F3;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer">▼ ONA WALIOTEMBELEA WEBSITE ({len(visitors)}) - VIEWS</button><div id="vis-list" style="display:block; max-height:400px; overflow-y:auto; border:2px solid #2196F3; border-radius:12px; margin-top:10px; padding:10px; background:#fff;">{visitors_html}</div></div>"""
+    else:
+        sigs_dropdown = """<p style="font-size:12px;color:#666;background:#e8f5e9;padding:10px;border-radius:8px">🔒 <b>Data yako ni siri</b> - ID na Kura hazionyeshwi hadharani.</p>"""
+        download_btn = """<a href="#" onclick="let p=prompt('Weka Password:'); if(p) window.location='/download?key='+p; else alert('Password inahitajika'); return false;" style="display:block;margin-top:15px;background:#444;color:#fff;padding:12px;border-radius:10px;text-decoration:none;font-weight:bold">🔒 DOWNLOAD - Admin Tu</a>"""
+        visitors_dropdown = ""
+
+    return f"""
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MUTUA WA KATANGI - YATTA MP 2027</title>
+<style>
+body{{margin:0;font-family:Arial;background:#004d26;color:white;text-align:center}}
+.header{{padding:20px 15px}}.card{{background:white;color:#222;padding:20px;border-radius:20px;margin:15px}}
+.btn{{display:block;padding:14px;margin:8px 0;border-radius:12px;text-decoration:none;font-weight:bold;color:white;cursor:pointer;border:none;width:100%;box-sizing:border-box}}
+.wa{{background:#25D366}}.gold{{background:#FFD700;color:#000}}
+.pochi-box{{background:linear-gradient(135deg,#FFD700,#FFA500);color:#000;padding:20px;border-radius:15px;font-weight:bold;border:3px solid #004d26}}
+.copy-btn{{background:#004d26;color:white;padding:10px 15px;border-radius:8px;border:none;font-weight:bold;cursor:pointer;margin:5px}}
+img{{width:160px;height:160px;border-radius:50%;border:4px solid gold;object-fit:cover;background:white}}
+input,textarea,select{{width:100%;padding:13px;margin:7px 0;border-radius:10px;border:1px solid #ccc;box-sizing:border-box}}
+.submit{{background:#004d26;color:white;border:none;font-weight:bold;cursor:pointer}}
+</style>
+<script>function copyPochi(){{navigator.clipboard.writeText('0796069040');alert('Namba 0796069040 ime-COPY!');}}</script>
+</head><body>
+<div class="header"><img src="https://raw.githubusercontent.com/denismutua4/Yatta-2027/main/mutua.jpg">
+<h1>🔥 MUTUA WA KATANGI 🔥</h1><h2 style="color:gold;margin:0">YATTA MP 2027 - INDEPENDENT</h2><p>Yatta Mpya, Maendeleo Kwa Wote</p>
+{'<p style="background:red;padding:10px;border-radius:10px">🔓 ADMIN MODE - Unaona sahihi na views zote</p>' if is_admin else ''}</div>
+
+<div class="card" style="border:3px solid #25D366;background:#f0fff0">
+<h2 style="color:#004d26;margin:0">✅ SAJILI SAHIHI YA IEBC</h2>
+<p style="font-size:13px">Tunahitaji sahihi 1000 za Yatta</p>
+<p style="font-size:14px;background:#004d26;color:white;padding:10px;border-radius:10px">📊 Sahihi: <b>{count_sigs} / 1000</b> | 👁️ Views: <b>{len(visitors)}</b></p>
+<form method="POST">
+<input type="hidden" name="form_type" value="sig">
+<input name="name" placeholder="Jina kamili kama ID" required>
+<input name="id_no" placeholder="Namba ya ID" required type="number">
+<input name="voter_no" placeholder="Namba ya Kura" required>
+<input name="station" placeholder="Kituo cha Kura" required>
+<input class="submit btn wa" type="submit" value="SAJILI SAHIHI YANGU ✅">
+</form>
+{sigs_dropdown}
+{visitors_dropdown}
+{download_btn}
+</div>
+
+<div class="card"><div class="pochi-box"><h2 style="margin:0;color:#004d26">💰 CHANGIA KAMPENI YETU</h2>
+<p>POCHI LA BIASHARA</p><h1>0796069040</h1>
+<button class="copy-btn" onclick="copyPochi()">📋 COPY</button>
+<a href="tel:*334%23" class="copy-btn" style="text-decoration:none;display:inline-block;background:#000">📞 LIPA *334#</a>
+<p style="font-size:13px;background:white;padding:8px;border-radius:8px;margin-top:10px">✅ Michango: {count_michango} | 💵 Jumla: KES {total_michango}</p></div>
+<br><a class="btn wa" href="https://chat.whatsapp.com/JiuIABnB9gA7iSwlNslTBH">JOIN WHATSAPP GROUP</a></div>
+
+<div class="card"><h2 style="color:#004d26">💰 THIBITISHA MCHANGO</h2>
+<form method="POST"><input type="hidden" name="form_type" value="mchango">
+<input name="name" placeholder="Jina lako" required>
+<select name="amount" required><option value="">Chagua Kiasi</option><option value="100">100</option><option value="200">200</option><option value="500">500</option><option value="1000">1,000</option><option value="2000">2,000</option><option value="5000">5,000</option></select>
+<input class="submit btn gold" type="submit" value="THIBITISHA MCHANGO ✅"></form>{michango_dropdown}</div>
+
+<div class="card"><h2 style="color:#004d26">✍️ ANDIKA UJUMBE</h2>
+<form method="POST"><input type="hidden" name="form_type" value="ujumbe">
+<input name="name" placeholder="Jina lako" required><input name="place" placeholder="Mahali (Matuu)" required>
+<textarea name="msg" placeholder="Ujumbe wako..." rows="3" required maxlength="200"></textarea>
+<input class="submit btn" type="submit" value="TUMA UJUMBE 🔥"></form></div>
+
+<div class="card"><h3 style="color:#004d26">💬 UJUMBE WA WANA-YATTA ({count_msgs})</h3>{msgs_dropdown}</div>
+
+<p style="padding:15px;font-size:14px">© 2027 Mutua wa Katangi - INDEPENDENT</p></body></html>
+"""
