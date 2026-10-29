@@ -171,7 +171,7 @@ input,textarea,select{{width:100%;padding:13px;margin:7px 0;border-radius:10px;b
 <div style="background:#111;padding:12px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;position:sticky;top:0;z-index:999">
   <a href="https://www.facebook.com/share/1A5o1f48R6/" target="_blank" style="background:#1877F2;color:white;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">📘 Facebook</a>
   <a href="https://www.tiktok.com/@mutuawakatangi" target="_blank" style="background:#000;color:white;border:1px solid #444;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">🎵 TikTok</a>
-  <a href="https://x.com/mutuawakatangi" target="_blank" style="background:white;color:black;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">𝕏 Twitter</a>
+  <a href="https://x.com/denis_mutua_d" target="_blank" style="background:white;color:black;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Twitter</a>
   <a href="https://wa.me/254796069040" target="_blank" style="background:#25D366;color:white;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">💬 WhatsApp</a>
   <a href="https://chat.whatsapp.com/JiuIABnB9gA7iSwlNslTBH" target="_blank" style="background:#128C7E;color:white;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">👥 Group</a>
 </div>
@@ -222,7 +222,7 @@ input,textarea,select{{width:100%;padding:13px;margin:7px 0;border-radius:10px;b
 <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap">
 <a href="https://www.facebook.com/share/1A5o1f48R6/" target="_blank" style="background:#1877F2;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Facebook</a>
 <a href="https://www.tiktok.com/@mutuawakatangi" target="_blank" style="background:#000;border:1px solid white;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">TikTok</a>
-<a href="https://x.com/mutuawakatangi" target="_blank" style="background:white;color:black;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Twitter</a>
+<a href="https://x.com/denis_mutua_d" target="_blank" style="background:white;color:black;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Twitter</a>
 <a href="https://wa.me/254796069040" target="_blank" style="background:#25D366;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">WhatsApp Direct</a>
 </div>
 <p style="margin-top:15px;font-size:12px;color:#999">© 2027 Mutua wa Katangi - INDEPENDENT | Yatta Mpya</p>
