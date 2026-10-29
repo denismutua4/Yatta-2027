@@ -16,6 +16,7 @@ HEADERS = {
     "Content-Type": "application/json",
     "Prefer": "return=representation"
 }
+
 def get_supporters():
     try:
         r = requests.get(f"{SUPABASE_URL}/rest/v1/{TABLE}?select=*&order=created_at.desc&limit=2000", headers=HEADERS, timeout=10)
@@ -50,24 +51,49 @@ def delete_supporter(sid):
         requests.delete(f"{SUPABASE_URL}/rest/v1/{TABLE}?id=eq.{sid}", headers=HEADERS, timeout=10)
     except: pass
 
+# DOWNLOAD lazima iwe KWANZA kabla ya home
 @app.route('/download')
 def download():
-    key = request.args.get('key')
+    key = request.args.get('key','')
     if key != ADMIN_PASSWORD:
-        return "<h1 style='text-align:center;margin-top:50px'>Hautaruhusiwi</h1>"
+        return "<h1 style='text-align:center;margin-top:50px'>Hautaruhusiwi</h1><p style='text-align:center'><a href='/'>Rudi Home</a></p>"
     supporters = get_supporters()
     sigs = [s for s in supporters if "SIG_ID" in str(s.get('msg',''))]
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["No", "Jina", "ID Number", "Kura Number", "Kituo"])
     for i, s in enumerate(sigs, 1):
-        writer.writerow([i, s.get('name'), s.get('msg'), s.get('place')])
-    return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment;filename=YATTA_SAHIHI_{len(sigs)}.csv"})
+        msg = s.get('msg','')
+        # Safi parse
+        id_no = ""
+        kura_no = ""
+        kituo = s.get('place','')
+        try:
+            # msg = SIG_ID:32374205 | KURA: | KITUO:Kiuukuni | SIG
+            if "SIG_ID:" in msg:
+                id_no = msg.split("SIG_ID:")[1].split("|")[0].strip()
+            if "KURA:" in msg:
+                kura_no = msg.split("KURA:")[1].split("|")[0].strip()
+        except:
+            pass
+        writer.writerow([i, s.get('name',''), id_no, kura_no, kituo])
+    csv_data = output.getvalue()
+    # BOM for Excel
+    csv_data = "\ufeff" + csv_data
+    return Response(
+        csv_data,
+        mimetype="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=YATTA_SAHIHI_{len(sigs)}.csv",
+            "Content-Type": "text/csv; charset=utf-8"
+        }
+    )
 
 @app.route('/', methods=['GET','POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET','POST'])
 def home(path):
-    if request.method == 'GET' and 'favicon' not in path:
+    # USI-log favicon
+    if request.method == 'GET' and 'favicon' not in path and 'download' not in path:
         log_visitor(request)
 
     is_admin = request.args.get('admin') == ADMIN_PASSWORD or request.args.get('key') == ADMIN_PASSWORD
