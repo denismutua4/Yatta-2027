@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/download", "destination": "/api/index" },
     { "source": "/(.*)", "destination": "/api/index" }
   ]
 }
