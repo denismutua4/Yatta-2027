@@ -110,14 +110,10 @@ def handle_download():
         # View mode - inazuia Google Translate
         return f"<html><head><meta name='google' content='notranslate'><meta name='viewport' content='width=device-width'><title>YATTA LIST</title></head><body class='notranslate' translate='no' style='font-family:Arial;padding:20px'><h2>SAHIHI {len(sigs)} / 1000</h2><pre style='background:#f0f0f0;padding:15px;border-radius:10px;overflow:auto;white-space:pre-wrap'>{csv_data}</pre><br><button onclick=\"navigator.clipboard.writeText(document.querySelector('pre').innerText);alert('Copied!')\" style='background:#004d26;color:#fff;padding:12px 20px;border-radius:10px;border:none;font-weight:bold'>📋 COPY YOTE</button><br><br><a href='/?admin={ADMIN_PASSWORD}'>← Rudi Admin</a></body></html>"
 
-    # Download mode - inazuia Google Translate 100%
     resp = make_response("\ufeff" + csv_data)
     resp.headers["Content-Type"] = "text/csv; charset=utf-8"
-    resp.headers["Content-Disposition"] = f"attachment; filename=YATTA_SAHIHI_{len(sigs)}.csv; charset=utf-8"
+    resp.headers["Content-Disposition"] = f'attachment; filename="YATTA_SAHIHI_{len(sigs)}.csv"'
     resp.headers["Cache-Control"] = "no-store, no-cache"
-    resp.headers["X-Robots-Tag"] = "noindex, nofollow, no-translate"
-    resp.headers["Content-Language"] = "en"
-    resp.headers["Google-Translate"] = "no"
     return resp
 
 @app.route('/download')
