@@ -109,17 +109,12 @@ def download():
     if view == "1":
         return f"<html><head><meta name='viewport' content='width=device-width'><title>YATTA LIST</title></head><body style='font-family:Arial;padding:20px'><h2>SAHIHI {len(sigs)} / 1000</h2><pre style='background:#f0f0f0;padding:15px;border-radius:10px;overflow:auto;white-space:pre-wrap'>{csv_data}</pre><br><button onclick=\"navigator.clipboard.writeText(document.querySelector('pre').innerText);alert('Copied!')\" style='background:#004d26;color:#fff;padding:12px 20px;border-radius:10px;border:none;font-weight:bold'>📋 COPY YOTE</button><br><br><a href='/?admin={ADMIN_PASSWORD}'>← Rudi Admin</a></body></html>"
 
-    csv_bytes = io.BytesIO()
-    csv_bytes.write("\ufeff".encode('utf-8'))  # BOM for Excel
-    csv_bytes.write(csv_data.encode('utf-8'))
-    csv_bytes.seek(0)
-    
     return Response(
-        csv_bytes.getvalue(),
-        mimetype="application/octet-stream",
+        "\ufeff" + csv_data,
+        mimetype="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f"attachment; filename=YATTA_SAHIHI_{len(sigs)}.csv",
-            "Cache-Control": "no-cache"
+            "Cache-Control": "no-store"
         }
     )
 
