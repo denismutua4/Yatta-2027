@@ -86,8 +86,10 @@ def download():
     view = request.args.get('view','')
     if key != ADMIN_PASSWORD:
         return "<h1 style='text-align:center;margin-top:50px'>Hautaruhusiwi</h1>"
+    
     supporters = get_supporters()
     sigs = [s for s in supporters if "SIG_ID" in str(s.get('msg',''))]
+    
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["No", "Jina", "ID Number", "Kura Number", "Kituo"])
@@ -95,15 +97,31 @@ def download():
         msg = s.get('msg','')
         id_no = ""; kura_no = ""; kituo = s.get('place','')
         try:
-            if "SIG_ID:" in msg: id_no = msg.split("SIG_ID:")[1].split("|")[0].strip()
-            if "KURA:" in msg: kura_no = msg.split("KURA:")[1].split("|")[0].strip()
+            if "SIG_ID:" in msg: 
+                id_no = msg.split("SIG_ID:")[1].split("|")[0].strip()
+            if "KURA:" in msg: 
+                kura_no = msg.split("KURA:")[1].split("|")[0].strip()
         except: pass
         writer.writerow([i, s.get('name',''), id_no, kura_no, kituo])
+    
     csv_data = output.getvalue()
+
     if view == "1":
         return f"<html><head><meta name='viewport' content='width=device-width'><title>YATTA LIST</title></head><body style='font-family:Arial;padding:20px'><h2>SAHIHI {len(sigs)} / 1000</h2><pre style='background:#f0f0f0;padding:15px;border-radius:10px;overflow:auto;white-space:pre-wrap'>{csv_data}</pre><br><button onclick=\"navigator.clipboard.writeText(document.querySelector('pre').innerText);alert('Copied!')\" style='background:#004d26;color:#fff;padding:12px 20px;border-radius:10px;border:none;font-weight:bold'>📋 COPY YOTE</button><br><br><a href='/?admin={ADMIN_PASSWORD}'>← Rudi Admin</a></body></html>"
-    csv_data = "\ufeff" + csv_data
-    return Response(csv_data, mimetype="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename=YATTA_SAHIHI_{len(sigs)}.csv"})
+
+    csv_bytes = io.BytesIO()
+    csv_bytes.write("\ufeff".encode('utf-8'))  # BOM for Excel
+    csv_bytes.write(csv_data.encode('utf-8'))
+    csv_bytes.seek(0)
+    
+    return Response(
+        csv_bytes.getvalue(),
+        mimetype="application/octet-stream",
+        headers={
+            "Content-Disposition": f"attachment; filename=YATTA_SAHIHI_{len(sigs)}.csv",
+            "Cache-Control": "no-cache"
+        }
+    )
 
 @app.route('/', methods=['GET','POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET','POST'])
