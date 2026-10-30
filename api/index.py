@@ -1,7 +1,6 @@
 from flask import Flask, request, redirect, Response
 import requests
 import csv, io
-from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -34,19 +33,28 @@ def get_visitors():
 
 def get_total_views_counter():
     try:
-        r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id", headers={**HEADERS, "Prefer": "count=exact"}, timeout=5)
-        return int(r.headers.get('Content-Range','').split('/')[-1]) if r.headers.get('Content-Range') else len(get_visitors())
-    except:
-        return len(get_visitors())
+        r = requests.get(f"{SUPABASE_URL}/rest/v1/total_counter?id=eq.1&select=total_views", headers=HEADERS, timeout=5)
+        if r.status_code == 200 and r.json():
+            return r.json()[0]['total_views']
+    except: pass
+    return 0
+
+def increment_total_counter():
+    try:
+        r = requests.get(f"{SUPABASE_URL}/rest/v1/total_counter?id=eq.1&select=total_views", headers=HEADERS, timeout=5)
+        cur = r.json()[0]['total_views'] if r.status_code==200 and r.json() else 0
+        requests.patch(f"{SUPABASE_URL}/rest/v1/total_counter?id=eq.1", json={"total_views": cur+1}, headers=HEADERS, timeout=3)
+    except: pass
 
 def cleanup_old_visitors():
     try:
-        total = get_total_views_counter()
+        r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id", headers={**HEADERS, "Prefer": "count=exact"}, timeout=5)
+        total = int(r.headers.get('Content-Range','').split('/')[-1]) if r.headers.get('Content-Range') else 0
         if total >= 10000:
-            r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id&order=created_at.desc&limit=8000", headers=HEADERS, timeout=10)
-            if r.status_code == 200 and r.json():
-                keep_ids = ",".join([str(x['id']) for x in r.json()])
-                requests.delete(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?id=not.in.({keep_ids})", headers=HEADERS, timeout=15)
+            r2 = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id&order=created_at.desc&limit=8000", headers=HEADERS, timeout=10)
+            if r2.status_code == 200 and r2.json():
+                keep = ",".join([str(x['id']) for x in r2.json()])
+                requests.delete(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?id=not.in.({keep})", headers=HEADERS, timeout=15)
     except: pass
 
 def log_visitor(req):
@@ -56,6 +64,7 @@ def log_visitor(req):
         ref = req.headers.get('Referer','Direct')[:100]
         payload = {"name": "VISITOR", "place": str(ip)[:50], "msg": f"VIEW | {agent} | {ref}"}
         requests.post(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}", json=payload, headers=HEADERS, timeout=3)
+        increment_total_counter()
         cleanup_old_visitors()
     except: pass
 
@@ -90,12 +99,8 @@ def download():
         except: pass
         writer.writerow([i, s.get('name',''), id_no, kura_no, kituo])
     csv_data = output.getvalue()
-
-    # VIEW MODE - ONA KWA MACHO
     if view == "1":
-        html_rows = "".join([f"<tr><td>{row}</td></tr>" for row in csv_data.split("\n")])
         return f"<html><head><meta name='viewport' content='width=device-width'><title>YATTA LIST</title></head><body style='font-family:Arial;padding:20px'><h2>SAHIHI {len(sigs)} / 1000</h2><pre style='background:#f0f0f0;padding:15px;border-radius:10px;overflow:auto;white-space:pre-wrap'>{csv_data}</pre><br><button onclick=\"navigator.clipboard.writeText(document.querySelector('pre').innerText);alert('Copied!')\" style='background:#004d26;color:#fff;padding:12px 20px;border-radius:10px;border:none;font-weight:bold'>📋 COPY YOTE</button><br><br><a href='/?admin={ADMIN_PASSWORD}'>← Rudi Admin</a></body></html>"
-
     csv_data = "\ufeff" + csv_data
     return Response(csv_data, mimetype="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename=YATTA_SAHIHI_{len(sigs)}.csv"})
 
@@ -163,13 +168,7 @@ def home(path):
     msgs_dropdown = f"<div style='margin-top:10px'><button onclick=\"let x=document.getElementById('msg-list'); x.style.display=x.style.display=='none'?'block':'none'\" style='background:#004d26;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer'>▼ ONA UJUMBE WOTE ({count_msgs})</button><div id='msg-list' style='display:none; max-height:350px; overflow-y:auto; border:2px solid #004d26; border-radius:12px; margin-top:10px; padding:10px; background:#fff;'>{msgs_html}</div></div>"
     if is_admin:
         sigs_dropdown = f"<div style='margin-top:10px'><div style='background:#25D366;color:white;padding:12px 15px;border-radius:10px;font-weight:bold;'>▼ SAHIHI ZOTE ({count_sigs}) - ADMIN</div><div style='max-height:500px; overflow-y:auto; border:2px solid #25D366; border-radius:12px; margin-top:10px; padding:10px; background:#fff;'>{sigs_html}</div></div>"
-        download_btn = f"""
-        <div style='margin-top:15px;display:flex;flex-direction:column;gap:10px'>
-        <a href='/download?key={ADMIN_PASSWORD}' style='display:block;background:#000;color:#fff;padding:14px;border-radius:10px;text-decoration:none;font-weight:bold;text-align:center'>📥 DOWNLOAD - KOMPYUTA ({count_sigs})</a>
-        <a href='/download?key={ADMIN_PASSWORD}&view=1' style='display:block;background:#2196F3;color:#fff;padding:14px;border-radius:10px;text-decoration:none;font-weight:bold;text-align:center'>📄 ONA & COPY - KWA SIMU ({count_sigs})</a>
-        <button onclick="fetch('/download?key={ADMIN_PASSWORD}').then(r=>r.text()).then(t=>{{let b=new Blob(['\\ufeff'+t],{{type:'text/csv'}});let u=URL.createObjectURL(b);let a=document.createElement('a');a.href=u;a.download='YATTA_SAHIHI_{count_sigs}.csv';document.body.appendChild(a);a.click();a.remove();alert('Imedownload! Angalia Downloads')}})" style='background:#FFD700;color:#000;padding:14px;border-radius:10px;font-weight:bold;width:100%;border:none;cursor:pointer'>📱 DOWNLOAD KWA SIMU - BONyeza HAPA! ({count_sigs})</button>
-        </div>
-        """
+        download_btn = f"""<div style='margin-top:15px;display:flex;flex-direction:column;gap:10px'><a href='/download?key={ADMIN_PASSWORD}' style='display:block;background:#000;color:#fff;padding:14px;border-radius:10px;text-decoration:none;font-weight:bold;text-align:center'>📥 DOWNLOAD - KOMPYUTA ({count_sigs})</a><a href='/download?key={ADMIN_PASSWORD}&view=1' style='display:block;background:#2196F3;color:#fff;padding:14px;border-radius:10px;text-decoration:none;font-weight:bold;text-align:center'>📄 ONA & COPY - KWA SIMU ({count_sigs})</a></div>"""
         visitors_dropdown = f"<div style='margin-top:15px'><div style='background:#2196F3;color:white;padding:12px 15px;border-radius:10px;font-weight:bold;'>▼ WALIOTEMBELEA ({total_views})</div><div style='max-height:400px; overflow-y:auto; border:2px solid #2196F3; border-radius:12px; margin-top:10px; padding:10px; background:#fff;'>{visitors_html}</div></div>"
     else:
         sigs_dropdown = "<p style='font-size:12px;color:#666;background:#e8f5e9;padding:10px;border-radius:8px'>🔒 <b>Data yako ni siri</b></p>"
@@ -181,12 +180,12 @@ def home(path):
 <style>body{{margin:0;font-family:Arial;background:#004d26;color:white;text-align:center}}.header{{padding:20px 15px}}.card{{background:white;color:#222;padding:20px;border-radius:20px;margin:15px}}.btn{{display:block;padding:14px;margin:8px 0;border-radius:12px;text-decoration:none;font-weight:bold;color:white;cursor:pointer;border:none;width:100%;box-sizing:border-box}}.wa{{background:#25D366}}.gold{{background:#FFD700;color:#000}}.pochi-box{{background:linear-gradient(135deg,#FFD700,#FFA500);color:#000;padding:20px;border-radius:15px;font-weight:bold;border:3px solid #004d26}}.copy-btn{{background:#004d26;color:white;padding:10px 15px;border-radius:8px;border:none;font-weight:bold;cursor:pointer;margin:5px}}img{{width:160px;height:160px;border-radius:50%;border:4px solid gold;object-fit:cover;background:white}}input,textarea,select{{width:100%;padding:13px;margin:7px 0;border-radius:10px;border:1px solid #ccc;box-sizing:border-box}}.submit{{background:#004d26;color:white;border:none;font-weight:bold;cursor:pointer}}</style>
 <script>function copyPochi(){{navigator.clipboard.writeText('0796069040');alert('Namba 0796069040 ime-COPY!');}}</script>
 </head><body>
-<div style="background:#111;padding:12px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;position:sticky;top:0;z-index:999"><a href="https://www.facebook.com/share/1A5o1f48R6/" target="_blank" style="background:#1877F2;color:white;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">📘 Facebook</a><a href="https://www.tiktok.com/@mutuawakatangi" target="_blank" style="background:#000;color:white;border:1px solid #444;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">🎵 TikTok</a><a href="https://x.com/denis_mutua_d" target="_blank" style="background:white;color:black;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Twitter</a><a href="https://wa.me/254796069040" target="_blank" style="background:#25D366;color:white;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">💬 WhatsApp</a><a href="https://chat.whatsapp.com/JiuIABnB9gA7iSwlNslTBH" target="_blank" style="background:#128C7E;color:white;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">👥 Group</a></div>
+<div style="background:#111;padding:12px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;position:sticky;top:0;z-index:999"><a href="https://www.facebook.com/share/1A5o1f48R6/" target="_blank" style="background:#1877F2;color:white;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">📘 Facebook</a><a href="https://www.instagram.com/mutuawakatangi" target="_blank" style="background:linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5);color:white;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">📸 Instagram</a><a href="https://www.tiktok.com/@mutuawakatangi" target="_blank" style="background:#000;color:white;border:1px solid #444;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">🎵 TikTok</a><a href="https://x.com/denis_mutua_d" target="_blank" style="background:white;color:black;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">🐦 Twitter</a><a href="https://wa.me/254796069040" target="_blank" style="background:#25D366;color:white;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">💬 WhatsApp</a><a href="https://chat.whatsapp.com/JiuIABnB9gA7iSwlNslTBH" target="_blank" style="background:#128C7E;color:white;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:bold;font-size:13px">👥 Group</a></div>
 <div class="header"><img src="https://raw.githubusercontent.com/denismutua4/Yatta-2027/main/mutua.jpg"><h1>🔥 MUTUA WA KATANGI 🔥</h1><h2 style="color:gold;margin:0">YATTA MP 2027 - INDEPENDENT</h2><p>Yatta Mpya, Maendeleo Kwa Wote</p>{admin_banner}</div>
-<div class="card" style="border:3px solid #25D366;background:#f0fff0"><h2 style="color:#004d26;margin:0">✅ SAJILI SAHIHI YA IEBC</h2><p style="font-size:13px">Tunahitaji sahihi 1000 za Yatta</p><p style="font-size:14px;background:#004d26;color:white;padding:10px;border-radius:10px">📊 Sahihi: <b>{count_sigs} / 1000</b> | 👁️ Views: <b>{total_views}</b></p><form method="POST"><input type="hidden" name="form_type" value="sig"><input name="name" placeholder="Jina kamili kama ID" required><input name="id_no" placeholder="Namba ya ID" required type="number"><input name="voter_no" placeholder="Namba ya Kura" required><input name="station" placeholder="Kituo cha Kura" required><input class="submit btn wa" type="submit" value="SAJILI SAHIHI YANGU ✅"></form>{sigs_dropdown}{visitors_dropdown}{download_btn}</div>
+<div class="card" style="border:3px solid #25D366;background:#f0fff0"><h2 style="color:#004d26;margin:0">✅ SAJILI SAHIHI YA IEBC</h2><p style="font-size:13px">Tunahitaji sahihi 1000 za Yatta</p><p style="font-size:14px;background:#004d26;color:white;padding:10px;border-radius:10px">📊 Sahihi: <b>{count_sigs} / 1000</b> | 👁️ Views Siku 3: <b>{total_views}</b></p><form method="POST"><input type="hidden" name="form_type" value="sig"><input name="name" placeholder="Jina kamili kama ID" required><input name="id_no" placeholder="Namba ya ID" required type="number"><input name="voter_no" placeholder="Namba ya Kura" required><input name="station" placeholder="Kituo cha Kura" required><input class="submit btn wa" type="submit" value="SAJILI SAHIHI YANGU ✅"></form>{sigs_dropdown}{visitors_dropdown}{download_btn}</div>
 <div class="card"><div class="pochi-box"><h2 style="margin:0;color:#004d26">💰 CHANGIA KAMPENI YETU</h2><p>POCHI LA BIASHARA</p><h1>0796069040</h1><button class="copy-btn" onclick="copyPochi()">📋 COPY</button><a href="tel:*334%23" class="copy-btn" style="text-decoration:none;display:inline-block;background:#000">📞 LIPA *334#</a><p style="font-size:13px;background:white;padding:8px;border-radius:8px;margin-top:10px">✅ Michango: {count_michango} | 💵 Jumla: KES {total_michango}</p></div><br><a class="btn wa" href="https://chat.whatsapp.com/JiuIABnB9gA7iSwlNslTBH">JOIN WHATSAPP GROUP</a></div>
 <div class="card"><h2 style="color:#004d26">💰 THIBITISHA MCHANGO</h2><form method="POST"><input type="hidden" name="form_type" value="mchango"><input name="name" placeholder="Jina lako" required><select name="amount" required><option value="">Chagua Kiasi</option><option value="100">100</option><option value="200">200</option><option value="500">500</option><option value="1000">1,000</option><option value="2000">2,000</option><option value="5000">5,000</option></select><input class="submit btn gold" type="submit" value="THIBITISHA MCHANGO ✅"></form>{michango_dropdown}</div>
 <div class="card"><h2 style="color:#004d26">✍️ ANDIKA UJUMBE</h2><form method="POST"><input type="hidden" name="form_type" value="ujumbe"><input name="name" placeholder="Jina lako" required><input name="place" placeholder="Mahali (Matuu)" required><textarea name="msg" placeholder="Ujumbe wako..." rows="3" required maxlength="200"></textarea><input class="submit btn" type="submit" value="TUMA UJUMBE 🔥"></form></div>
 <div class="card"><h3 style="color:#004d26">💬 UJUMBE WA WANA-YATTA ({count_msgs})</h3>{msgs_dropdown}</div>
-<div class="card" style="background:#111;color:white"><h3>🔗 UNGANA NASI</h3><div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap"><a href="https://www.facebook.com/share/1A5o1f48R6/" target="_blank" style="background:#1877F2;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Facebook</a><a href="https://www.tiktok.com/@mutuawakatangi" target="_blank" style="background:#000;border:1px solid white;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">TikTok</a><a href="https://x.com/denis_mutua_d" target="_blank" style="background:white;color:black;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Twitter</a><a href="https://wa.me/254796069040" target="_blank" style="background:#25D366;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">WhatsApp Direct</a></div><p style="margin-top:15px;font-size:12px;color:#999">© 2027 Mutua wa Katangi - INDEPENDENT | Yatta Mpya</p></div></body></html>
+<div class="card" style="background:#111;color:white"><h3>🔗 UNGANA NASI</h3><div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap"><a href="https://www.facebook.com/share/1A5o1f48R6/" target="_blank" style="background:#1877F2;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Facebook</a><a href="https://www.instagram.com/mutuawakatangi" target="_blank" style="background:linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5);color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Instagram</a><a href="https://www.tiktok.com/@mutuawakatangi" target="_blank" style="background:#000;border:1px solid white;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">TikTok</a><a href="https://x.com/denis_mutua_d" target="_blank" style="background:white;color:black;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Twitter</a><a href="https://wa.me/254796069040" target="_blank" style="background:#25D366;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">WhatsApp Direct</a></div><p style="margin-top:15px;font-size:12px;color:#999">© 2027 Mutua wa Katangi - INDEPENDENT | Yatta Mpya</p></div></body></html>
 """
