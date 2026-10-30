@@ -25,7 +25,6 @@ def get_supporters():
     except: pass
     return []
 
-
 def get_visitors():
     try:
         r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=*&order=created_at.desc&limit=500", headers=HEADERS, timeout=10)
@@ -64,15 +63,15 @@ def log_visitor(req):
         ip = req.headers.get('X-Forwarded-For', req.remote_addr) or "unknown"
         agent = req.headers.get('User-Agent','')[:150]
         ref = req.headers.get('Referer','Direct')[:100]
-        payload = {"name": "VISITOR", "place": str(ip)[:50], "msg": f"VIEW | {agent} | {ref}"}
+        payload = {"name": "VISITOR", "place": str(ip)[:50], "msg": f"VIEW | {agent} | {ref}", "type": "visitor"}
         requests.post(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}", json=payload, headers=HEADERS, timeout=3)
         increment_total_counter()
         cleanup_old_visitors()
     except: pass
 
-def add_supporter(name, place, msg):
+def add_supporter(name, place, msg, s_type="ujumbe"):
     try:
-        payload = {"name": name, "place": place, "msg": msg[:500]}
+        payload = {"name": name, "place": place, "msg": msg[:500], "type": s_type}
         requests.post(f"{SUPABASE_URL}/rest/v1/{TABLE}", json=payload, headers=HEADERS, timeout=10)
     except: pass
 
@@ -88,7 +87,7 @@ def handle_download():
         return "<h1 style='text-align:center;margin-top:50px'>Hautaruhusiwi</h1>", 401
     
     supporters = get_supporters()
-    sigs = [s for s in supporters if "SIG_ID" in str(s.get('msg',''))]
+    sigs = [s for s in supporters if s.get('type') == 'sahihi' or "SIG_ID" in str(s.get('msg',''))]
     
     output = io.StringIO()
     writer = csv.writer(output)
@@ -107,7 +106,6 @@ def handle_download():
     csv_data = output.getvalue()
 
     if view == "1":
-        # View mode - inazuia Google Translate
         return f"<html><head><meta name='google' content='notranslate'><meta name='viewport' content='width=device-width'><title>YATTA LIST</title></head><body class='notranslate' translate='no' style='font-family:Arial;padding:20px'><h2>SAHIHI {len(sigs)} / 1000</h2><pre style='background:#f0f0f0;padding:15px;border-radius:10px;overflow:auto;white-space:pre-wrap'>{csv_data}</pre><br><button onclick=\"navigator.clipboard.writeText(document.querySelector('pre').innerText);alert('Copied!')\" style='background:#004d26;color:#fff;padding:12px 20px;border-radius:10px;border:none;font-weight:bold'>📋 COPY YOTE</button><br><br><a href='/?admin={ADMIN_PASSWORD}'>← Rudi Admin</a></body></html>"
 
     resp = make_response("\ufeff" + csv_data)
@@ -145,15 +143,18 @@ def home(path):
         form_type = request.form.get('form_type','')
         if form_type == 'mchango':
             amount = request.form.get('amount','').strip()
-            if name and amount: add_supporter(name, f"MCHANGO {amount}", f"MCHANGO KES {amount}")
+            if name and amount: 
+                add_supporter(name, f"MCHANGO {amount}", f"KES {amount}", "mchango")
         elif form_type == 'sig':
             id_no = request.form.get('id_no','').strip()
             voter_no = request.form.get('voter_no','').strip()
             station = request.form.get('station','').strip()
-            if name and id_no and voter_no: add_supporter(name, station, f"SIG_ID:{id_no} | KURA:{voter_no} | KITUO:{station} | SIG")
+            if name and id_no and voter_no: 
+                add_supporter(name, station, f"SIG_ID:{id_no} | KURA:{voter_no} | KITUO:{station}", "sahihi")
         else:
             if len(msg) > 200: msg = msg[:200]
-            if name and msg: add_supporter(name, place, msg)
+            if name and msg: 
+                add_supporter(name, place, msg, "ujumbe")
         return redirect('/')
     supporters = get_supporters()
     all_visitors = get_visitors()
@@ -165,22 +166,22 @@ def home(path):
         visitors_html += f"<div style='background:#e3f2fd;padding:8px;margin:4px 0;border-radius:8px;font-size:11px;text-align:left'>👁️ {str(v.get('created_at',''))[:19]} | IP: {v.get('place','')} | {v.get('msg','')[:80]}</div>"
     if not visitors_html and is_admin: visitors_html = "<p style='color:#999'>Hakuna visitors bado</p>"
     for s in supporters:
-        if "SIG_ID" in str(s.get('msg','')):
+        s_type = s.get('type','')
+        # Tenganisha kwa type - HAI CHANGANYI TENA!
+        if s_type == 'sahihi' or "SIG_ID" in str(s.get('msg','')):
             count_sigs += 1
-            if is_admin: sigs_html += f"<div style='background:#e8f5e9;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid #25D366;'>✅ <b>{s.get('name')} - {s.get('msg')} - {s.get('place')}</b></div>"
+            if is_admin: sigs_html += f"<div style='background:#e8f5e9;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid #25D366;'>✅ <b>{s.get('name')} - {s.get('msg')} - {s.get('place')}</b> <a href='/?futa={s.get('id')}&key={ADMIN_PASSWORD}' style='color:red;font-size:11px'>[FUTA]</a></div>"
             continue
-        safe_msg = f"{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}"
-        is_mchango = "MCHANGO" in str(s.get('place','')).upper() or "MCHANGO" in str(s.get('msg','')).upper()
-        if is_mchango:
+        if s_type == 'mchango' or "MCHANGO" in str(s.get('msg','')).upper() or "MCHANGO" in str(s.get('place','')).upper():
             count_michango += 1
             try:
-                amt_str = ''.join(filter(str.isdigit, s.get('place','')))
-                if amt_str: total_michango += int(amt_str)
+                amt_str = ''.join(filter(str.isdigit, s.get('msg','')+s.get('place','')))
+                if amt_str: total_michango += int(amt_str[:5])
             except: pass
-            michango_html += f"<div style='background:#fff8dc;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid gold;'>💰 <b>{safe_msg}</b></div>"
+            michango_html += f"<div style='background:#fff8dc;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid gold;'>💰 <b>{s.get('name','')} - {s.get('place','')} - {s.get('msg','')}</b> <a href='/?futa={s.get('id')}&key={ADMIN_PASSWORD}' style='color:red;font-size:11px'>[FUTA]</a></div>"
         else:
             count_msgs += 1
-            if count_msgs <= 100: msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;'>💬 <b>{safe_msg}</b></div>"
+            if count_msgs <= 100: msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;'>💬 <b>{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}</b> <a href='/?futa={s.get('id')}&key={ADMIN_PASSWORD}' style='color:red;font-size:11px'>[FUTA]</a></div>"
     if not msgs_html: msgs_html = "<p style='color:#999'>Hakuna ujumbe bado</p>"
     if not michango_html: michango_html = "<p style='color:#999'>Hakuna mchango bado</p>"
     if not sigs_html: sigs_html = "<p style='color:#999'>Hakuna sahihi bado</p>" if is_admin else ""
