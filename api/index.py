@@ -1,14 +1,15 @@
 from flask import Flask, request, redirect, Response
-import requests
-import csv, io
+import requests, csv, io, os
+from dotenv import load_dotenv
 
+load_dotenv()
 app = Flask(__name__)
 
-SUPABASE_URL = "https://ccskbtbfbxysocrlzkou.supabase.co"
-SUPABASE_KEY = "sb_publishable_ZizSNK8wSNHTBrnae5i-Mw_muX2QpIN"
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://ccskbtbfbxysocrlzkou.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Yatta2027Mutua")
 TABLE = "supporters"
 VISITOR_TABLE = "visitors"
-ADMIN_PASSWORD = "Yatta2027Mutua"
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
