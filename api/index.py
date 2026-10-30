@@ -1,6 +1,7 @@
 from flask import Flask, request, redirect, Response
 import requests
 import csv, io
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -31,6 +32,18 @@ def get_visitors():
     except: pass
     return []
 
+def cleanup_old_visitors():
+    try:
+        from datetime import datetime, timedelta
+        three_days_ago = (datetime.utcnow() - timedelta(days=3)).isoformat()
+        requests.delete(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?created_at=lt.{three_days_ago}", headers=HEADERS, timeout=5)
+        r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id&order=created_at.desc&offset=100&limit=400", headers=HEADERS, timeout=5)
+        if r.status_code == 200 and r.json():
+            old_ids = ",".join([str(x['id']) for x in r.json()])
+            if old_ids:
+                requests.delete(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?id=in.({old_ids})", headers=HEADERS, timeout=10)
+    except: pass
+
 def log_visitor(req):
     try:
         ip = req.headers.get('X-Forwarded-For', req.remote_addr) or "unknown"
@@ -38,6 +51,7 @@ def log_visitor(req):
         ref = req.headers.get('Referer','Direct')[:100]
         payload = {"name": "VISITOR", "place": str(ip)[:50], "msg": f"VIEW | {agent} | {ref}"}
         requests.post(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}", json=payload, headers=HEADERS, timeout=3)
+        cleanup_old_visitors()
     except: pass
 
 def add_supporter(name, place, msg):
