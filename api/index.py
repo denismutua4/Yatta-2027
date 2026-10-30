@@ -32,16 +32,21 @@ def get_visitors():
     except: pass
     return []
 
+def get_total_views_counter():
+    try:
+        r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id", headers={**HEADERS, "Prefer": "count=exact"}, timeout=5)
+        return int(r.headers.get('Content-Range','').split('/')[-1]) if r.headers.get('Content-Range') else len(get_visitors())
+    except:
+        return len(get_visitors())
+
 def cleanup_old_visitors():
     try:
-        from datetime import datetime, timedelta
-        three_days_ago = (datetime.utcnow() - timedelta(days=3)).isoformat()
-        requests.delete(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?created_at=lt.{three_days_ago}", headers=HEADERS, timeout=5)
-        r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id&order=created_at.desc&offset=100&limit=400", headers=HEADERS, timeout=5)
-        if r.status_code == 200 and r.json():
-            old_ids = ",".join([str(x['id']) for x in r.json()])
-            if old_ids:
-                requests.delete(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?id=in.({old_ids})", headers=HEADERS, timeout=10)
+        total = get_total_views_counter()
+        if total >= 10000:
+            r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id&order=created_at.desc&limit=8000", headers=HEADERS, timeout=10)
+            if r.status_code == 200 and r.json():
+                keep_ids = ",".join([str(x['id']) for x in r.json()])
+                requests.delete(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?id=not.in.({keep_ids})", headers=HEADERS, timeout=15)
     except: pass
 
 def log_visitor(req):
@@ -127,7 +132,7 @@ def home(path):
         return redirect('/')
     supporters = get_supporters()
     all_visitors = get_visitors()
-    total_views = len(all_visitors)
+    total_views = get_total_views_counter()
     visitors = all_visitors if is_admin else []
     michango_html = ""; msgs_html = ""; sigs_html = ""; visitors_html = ""
     total_michango = 0; count_michango = 0; count_msgs = 0; count_sigs = 0
