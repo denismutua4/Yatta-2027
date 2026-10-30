@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, Response
+from flask import Flask, request, redirect, Response, make_response
 import requests, csv, io, os
 from dotenv import load_dotenv
 
@@ -24,6 +24,7 @@ def get_supporters():
         if r.status_code == 200: return r.json()
     except: pass
     return []
+
 
 def get_visitors():
     try:
@@ -80,12 +81,11 @@ def delete_supporter(sid):
         requests.delete(f"{SUPABASE_URL}/rest/v1/{TABLE}?id=eq.{sid}", headers=HEADERS, timeout=10)
     except: pass
 
-@app.route('/download')
-def download():
+def handle_download():
     key = request.args.get('key','')
     view = request.args.get('view','')
     if key != ADMIN_PASSWORD:
-        return "<h1 style='text-align:center;margin-top:50px'>Hautaruhusiwi</h1>"
+        return "<h1 style='text-align:center;margin-top:50px'>Hautaruhusiwi</h1>", 401
     
     supporters = get_supporters()
     sigs = [s for s in supporters if "SIG_ID" in str(s.get('msg',''))]
@@ -107,22 +107,32 @@ def download():
     csv_data = output.getvalue()
 
     if view == "1":
-        return f"<html><head><meta name='viewport' content='width=device-width'><title>YATTA LIST</title></head><body style='font-family:Arial;padding:20px'><h2>SAHIHI {len(sigs)} / 1000</h2><pre style='background:#f0f0f0;padding:15px;border-radius:10px;overflow:auto;white-space:pre-wrap'>{csv_data}</pre><br><button onclick=\"navigator.clipboard.writeText(document.querySelector('pre').innerText);alert('Copied!')\" style='background:#004d26;color:#fff;padding:12px 20px;border-radius:10px;border:none;font-weight:bold'>📋 COPY YOTE</button><br><br><a href='/?admin={ADMIN_PASSWORD}'>← Rudi Admin</a></body></html>"
+        # View mode - inazuia Google Translate
+        return f"<html><head><meta name='google' content='notranslate'><meta name='viewport' content='width=device-width'><title>YATTA LIST</title></head><body class='notranslate' translate='no' style='font-family:Arial;padding:20px'><h2>SAHIHI {len(sigs)} / 1000</h2><pre style='background:#f0f0f0;padding:15px;border-radius:10px;overflow:auto;white-space:pre-wrap'>{csv_data}</pre><br><button onclick=\"navigator.clipboard.writeText(document.querySelector('pre').innerText);alert('Copied!')\" style='background:#004d26;color:#fff;padding:12px 20px;border-radius:10px;border:none;font-weight:bold'>📋 COPY YOTE</button><br><br><a href='/?admin={ADMIN_PASSWORD}'>← Rudi Admin</a></body></html>"
 
-    return Response(
-        "\ufeff" + csv_data,
-        mimetype="text/csv; charset=utf-8",
-        headers={
-            "Content-Disposition": f"attachment; filename=YATTA_SAHIHI_{len(sigs)}.csv",
-            "Cache-Control": "no-store"
-        }
-    )
+    # Download mode - inazuia Google Translate 100%
+    resp = make_response("\ufeff" + csv_data)
+    resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+    resp.headers["Content-Disposition"] = f"attachment; filename=YATTA_SAHIHI_{len(sigs)}.csv; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-store, no-cache"
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow, no-translate"
+    resp.headers["Content-Language"] = "en"
+    resp.headers["Google-Translate"] = "no"
+    return resp
+
+@app.route('/download')
+def download_route():
+    return handle_download()
 
 @app.route('/', methods=['GET','POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET','POST'])
 def home(path):
-    if request.method == 'GET' and 'favicon' not in path and 'download' not in path:
+    if 'download' in path or 'download' in request.path:
+        return handle_download()
+
+    if request.method == 'GET' and 'favicon' not in path:
         log_visitor(request)
+    
     is_admin = request.args.get('admin') == ADMIN_PASSWORD or request.args.get('key') == ADMIN_PASSWORD
     futa_id = request.args.get('futa')
     admin_key = request.args.get('key')
