@@ -1,18 +1,16 @@
-from flask import Flask, request, redirect, Response, make_response
+from flask import Flask, request, redirect, session, make_response
 import requests, csv, io, os, re
 from dotenv import load_dotenv
 
 load_dotenv()
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET", "yatta-2027-super-secret-12345")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 TABLE = "supporters"
 VISITOR_TABLE = "visitors"
-
-if not SUPABASE_URL or not SUPABASE_KEY or not ADMIN_PASSWORD:
-    print("WARNING: Weka .env")
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -45,16 +43,6 @@ def increment_total_counter():
         cur = r.json()[0]['total_views'] if r.status_code==200 and r.json() else 0
         requests.patch(f"{SUPABASE_URL}/rest/v1/total_counter?id=eq.1", json={"total_views": cur+1}, headers=HEADERS, timeout=3)
     except: pass
-def cleanup_old_visitors():
-    try:
-        r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id", headers={**HEADERS, "Prefer": "count=exact"}, timeout=5)
-        total = int(r.headers.get('Content-Range','').split('/')[-1]) if r.headers.get('Content-Range') else 0
-        if total >= 10000:
-            r2 = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id&order=created_at.desc&limit=8000", headers=HEADERS, timeout=10)
-            if r2.status_code == 200 and r2.json():
-                keep = ",".join([str(x['id']) for x in r2.json()])
-                requests.delete(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?id=not.in.({keep})", headers=HEADERS, timeout=15)
-    except: pass
 def log_visitor(req):
     try:
         ip = req.headers.get('X-Forwarded-For', req.remote_addr) or "unknown"
@@ -63,7 +51,6 @@ def log_visitor(req):
         payload = {"name": "VISITOR", "place": str(ip)[:50], "msg": f"VIEW | {agent} | {ref}", "type": "visitor"}
         requests.post(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}", json=payload, headers=HEADERS, timeout=3)
         increment_total_counter()
-        cleanup_old_visitors()
     except: pass
 def add_supporter(name, place, msg, s_type="ujumbe"):
     try:
@@ -78,7 +65,9 @@ def delete_supporter(sid):
 def handle_download():
     key = request.args.get('key','')
     view = request.args.get('view','')
-    if key != ADMIN_PASSWORD:
+    # Ruhusu kama ako na session au key
+    is_admin_session = session.get('is_admin') == True
+    if key != ADMIN_PASSWORD and not is_admin_session:
         return "<h1 style='text-align:center;margin-top:50px'>Hautaruhusiwi</h1>", 401
     supporters = get_supporters()
     sigs = [s for s in supporters if s.get('type') == 'sahihi' or "SIG_ID" in str(s.get('msg',''))]
@@ -95,11 +84,38 @@ def handle_download():
         writer.writerow([i, s.get('name',''), id_no, kura_no, kituo])
     csv_data = output.getvalue()
     if view == "1":
-        return f"<html><head><meta name='viewport' content='width=device-width'><title>YATTA LIST</title></head><body style='font-family:Arial;padding:20px'><h2>SAHIHI {len(sigs)} / 1000</h2><pre style='background:#f0f0f0;padding:15px;border-radius:10px;overflow:auto;white-space:pre-wrap'>{csv_data}</pre><br><button onclick=\"navigator.clipboard.writeText(document.querySelector('pre').innerText);alert('Copied!')\" style='background:#004d26;color:#fff;padding:12px 20px;border-radius:10px;border:none;font-weight:bold'>📋 COPY YOTE</button><br><br><a href='/?admin={ADMIN_PASSWORD}'>← Rudi Admin</a></body></html>"
+        return f"<html><head><meta name='viewport' content='width=device-width'><title>YATTA LIST</title></head><body style='font-family:Arial;padding:20px'><h2>SAHIHI {len(sigs)} / 1000</h2><pre style='background:#f0f0f0;padding:15px;border-radius:10px;overflow:auto;white-space:pre-wrap'>{csv_data}</pre><br><button onclick=\"navigator.clipboard.writeText(document.querySelector('pre').innerText);alert('Copied!')\" style='background:#004d26;color:#fff;padding:12px 20px;border-radius:10px;border:none;font-weight:bold'>📋 COPY YOTE</button><br><br><a href='/'>← Rudi Home</a></body></html>"
     resp = make_response("\ufeff" + csv_data)
     resp.headers["Content-Type"] = "text/csv; charset=utf-8"
     resp.headers["Content-Disposition"] = f'attachment; filename="YATTA_SAHIHI_{len(sigs)}.csv"'
     return resp
+
+@app.route('/admin', methods=['GET','POST'])
+def admin_login():
+    if request.method == 'POST':
+        pwd = request.form.get('password','')
+        if pwd == ADMIN_PASSWORD:
+            session['is_admin'] = True
+            return redirect('/')
+        else:
+            return "<h1 style='text-align:center;color:red;margin-top:50px'>Password si sahihi!</h1><div style='text-align:center'><a href='/admin'>Jaribu tena</a></div>"
+    return """
+    <html><head><meta name="viewport" content="width=device-width"><title>Admin Login</title></head>
+    <body style="font-family:Arial;text-align:center;padding:30px;background:#004d26;color:white">
+    <div style="background:white;color:#222;padding:30px;border-radius:20px;max-width:350px;margin:50px auto">
+    <h2 style="color:#004d26">🔐 ADMIN LOGIN</h2>
+    <form method="POST">
+    <input type="password" name="password" placeholder="Weka Password ya Admin" required style="width:100%;padding:14px;border-radius:10px;border:1px solid #ccc;box-sizing:border-box">
+    <button type="submit" style="width:100%;padding:14px;background:#004d26;color:white;border:none;border-radius:10px;margin-top:15px;font-weight:bold;cursor:pointer">INGIA ADMIN</button>
+    </form>
+    <br><a href="/" style="font-size:13px">← Rudi Home</a>
+    </div></body></html>
+    """
+
+@app.route('/logout')
+def logout():
+    session.pop('is_admin', None)
+    return redirect('/')
 
 @app.route('/download')
 def download_route():
@@ -110,18 +126,21 @@ def download_route():
 def home(path):
     if 'download' in path or 'download' in request.path:
         return handle_download()
+    if 'admin' in path: return redirect('/admin')
     if request.method == 'GET' and 'favicon' not in path:
         log_visitor(request)
     
-    is_admin = request.args.get('admin') == ADMIN_PASSWORD or request.args.get('key') == ADMIN_PASSWORD
+    # ADMIN CHECK - KWANZA SESSION, KISHA KEY (kwa backward compat)
+    is_admin = session.get('is_admin') == True or request.args.get('admin') == ADMIN_PASSWORD or request.args.get('key') == ADMIN_PASSWORD
+    
     futa_id = request.args.get('futa')
     admin_key = request.args.get('key')
     if futa_id is not None:
-        if admin_key != ADMIN_PASSWORD:
+        if not is_admin and admin_key != ADMIN_PASSWORD:
             return f"<script>alert('Hautaruhusiwi!'); window.location='/';</script>"
         try: delete_supporter(int(futa_id))
         except: pass
-        return redirect(f'/?admin={ADMIN_PASSWORD}' if is_admin else '/')
+        return redirect('/')
     
     if request.method == 'POST':
         name = request.form.get('name','').strip()
@@ -152,7 +171,6 @@ def home(path):
         visitors_html += f"<div style='background:#e3f2fd;padding:8px;margin:4px 0;border-radius:8px;font-size:11px;text-align:left'>👁️ {str(v.get('created_at',''))[:19]} | IP: {v.get('place','')} | {v.get('msg','')[:80]}</div>"
     if not visitors_html and is_admin: visitors_html = "<p style='color:#999'>Hakuna visitors bado</p>"
 
-    # FUTA function - admin pekee
     def futa_link(sid):
         if is_admin:
             return f" <a href='/?futa={sid}&key={ADMIN_PASSWORD}' style='color:red;font-size:11px'>[FUTA]</a>"
@@ -168,7 +186,6 @@ def home(path):
         if s_type == 'mchango' or "MCHANGO" in str(s.get('msg','')).upper() or "MCHANGO" in str(s.get('place','')).upper():
             count_michango += 1
             try:
-                # FIX: Chukua namba moja tu - 5000, sio 50005000
                 m = re.search(r'\d+', s.get('place','') or s.get('msg',''))
                 if m: total_michango += int(m.group(0))
             except: pass
@@ -188,12 +205,12 @@ def home(path):
     if is_admin:
         sigs_dropdown = f"<div style='margin-top:10px'><div style='background:#25D366;color:white;padding:12px 15px;border-radius:10px;font-weight:bold;'>▼ SAHIHI ZOTE ({count_sigs}) - ADMIN</div><div style='max-height:500px; overflow-y:auto; border:2px solid #25D366; border-radius:12px; margin-top:10px; padding:10px; background:#fff;'>{sigs_html}</div></div>"
         visitors_dropdown = f"<div style='margin-top:15px'><div style='background:#2196F3;color:white;padding:12px 15px;border-radius:10px;font-weight:bold;'>▼ WALIOTEMBELEA ({total_views})</div><div style='max-height:400px; overflow-y:auto; border:2px solid #2196F3; border-radius:12px; margin-top:10px; padding:10px; background:#fff;'>{visitors_html}</div></div>"
-        download_btn = f"""<div style='margin-top:15px;display:flex;flex-direction:column;gap:10px'><a href='/download?key={ADMIN_PASSWORD}' style='display:block;background:#000;color:#fff;padding:14px;border-radius:10px;text-decoration:none;font-weight:bold;text-align:center'>📥 DOWNLOAD - KOMPYUTA ({count_sigs})</a><a href='/download?key={ADMIN_PASSWORD}&view=1' style='display:block;background:#2196F3;color:#fff;padding:14px;border-radius:10px;text-decoration:none;font-weight:bold;text-align:center'>📄 ONA & COPY - KWA SIMU ({count_sigs})</a></div>"""
-        admin_banner = f"<p style='background:red;padding:10px;border-radius:10px'>🔓 ADMIN MODE - {count_sigs} sahihi</p>"
+        download_btn = f"""<div style='margin-top:15px;display:flex;flex-direction:column;gap:10px'><a href='/download?key={ADMIN_PASSWORD}' style='display:block;background:#000;color:#fff;padding:14px;border-radius:10px;text-decoration:none;font-weight:bold;text-align:center'>📥 DOWNLOAD - KOMPYUTA ({count_sigs})</a><a href='/download?key={ADMIN_PASSWORD}&view=1' style='display:block;background:#2196F3;color:#fff;padding:14px;border-radius:10px;text-decoration:none;font-weight:bold;text-align:center'>📄 ONA & COPY - KWA SIMU ({count_sigs})</a><br><a href='/logout' style='display:block;background:red;color:#fff;padding:10px;border-radius:10px;text-decoration:none;text-align:center'>🚪 LOGOUT ADMIN</a></div>"""
+        admin_banner = f"<p style='background:red;padding:10px;border-radius:10px'>🔓 ADMIN MODE - {count_sigs} sahihi | <a href='/logout' style='color:white'>Logout</a></p>"
     else:
         sigs_dropdown = f"<p style='font-size:12px;color:#666;background:#e8f5e9;padding:12px;border-radius:8px;text-align:center'>🔒 Asante! Sahihi yako imehifadhiwa kwa siri.<br>📊 <b>{count_sigs} / 1000</b> zimesajiliwa.</p>"
         visitors_dropdown = ""
-        download_btn = ""
+        download_btn = f"<div style='text-align:center;margin-top:15px'><a href='/admin' style='font-size:12px;color:#666;text-decoration:none'>🔐 Admin Login</a></div>"
         admin_banner = ""
 
     return f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>MUTUA WA KATANGI</title>
