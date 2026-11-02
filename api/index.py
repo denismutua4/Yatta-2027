@@ -1,5 +1,5 @@
 from flask import Flask, request, redirect, Response, make_response
-import requests, csv, io, os
+import requests, csv, io, os, re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,9 +11,8 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 TABLE = "supporters"
 VISITOR_TABLE = "visitors"
 
-# Hakikisha .env ipo
 if not SUPABASE_URL or not SUPABASE_KEY or not ADMIN_PASSWORD:
-    print("WARNING: Weka SUPABASE_URL, SUPABASE_KEY, ADMIN_PASSWORD kwenye .env")
+    print("WARNING: Weka .env")
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -28,29 +27,24 @@ def get_supporters():
         if r.status_code == 200: return r.json()
     except: pass
     return []
-
 def get_visitors():
     try:
         r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=*&order=created_at.desc&limit=500", headers=HEADERS, timeout=10)
         if r.status_code == 200: return r.json()
     except: pass
     return []
-
 def get_total_views_counter():
     try:
         r = requests.get(f"{SUPABASE_URL}/rest/v1/total_counter?id=eq.1&select=total_views", headers=HEADERS, timeout=5)
-        if r.status_code == 200 and r.json():
-            return r.json()[0]['total_views']
+        if r.status_code == 200 and r.json(): return r.json()[0]['total_views']
     except: pass
     return 0
-
 def increment_total_counter():
     try:
         r = requests.get(f"{SUPABASE_URL}/rest/v1/total_counter?id=eq.1&select=total_views", headers=HEADERS, timeout=5)
         cur = r.json()[0]['total_views'] if r.status_code==200 and r.json() else 0
         requests.patch(f"{SUPABASE_URL}/rest/v1/total_counter?id=eq.1", json={"total_views": cur+1}, headers=HEADERS, timeout=3)
     except: pass
-
 def cleanup_old_visitors():
     try:
         r = requests.get(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?select=id", headers={**HEADERS, "Prefer": "count=exact"}, timeout=5)
@@ -61,7 +55,6 @@ def cleanup_old_visitors():
                 keep = ",".join([str(x['id']) for x in r2.json()])
                 requests.delete(f"{SUPABASE_URL}/rest/v1/{VISITOR_TABLE}?id=not.in.({keep})", headers=HEADERS, timeout=15)
     except: pass
-
 def log_visitor(req):
     try:
         ip = req.headers.get('X-Forwarded-For', req.remote_addr) or "unknown"
@@ -72,13 +65,11 @@ def log_visitor(req):
         increment_total_counter()
         cleanup_old_visitors()
     except: pass
-
 def add_supporter(name, place, msg, s_type="ujumbe"):
     try:
         payload = {"name": name, "place": place, "msg": msg[:500], "type": s_type}
         requests.post(f"{SUPABASE_URL}/rest/v1/{TABLE}", json=payload, headers=HEADERS, timeout=10)
     except: pass
-
 def delete_supporter(sid):
     try:
         requests.delete(f"{SUPABASE_URL}/rest/v1/{TABLE}?id=eq.{sid}", headers=HEADERS, timeout=10)
@@ -131,6 +122,7 @@ def home(path):
         try: delete_supporter(int(futa_id))
         except: pass
         return redirect(f'/?admin={ADMIN_PASSWORD}' if is_admin else '/')
+    
     if request.method == 'POST':
         name = request.form.get('name','').strip()
         place = request.form.get('place','').strip()
@@ -150,34 +142,41 @@ def home(path):
         return redirect('/')
     
     supporters = get_supporters()
-    all_visitors = get_visitors() if is_admin else []  # VISITORS ADMIN PEKEE
+    all_visitors = get_visitors() if is_admin else []
     total_views = get_total_views_counter()
     visitors = all_visitors
     michango_html = ""; msgs_html = ""; sigs_html = ""; visitors_html = ""
     total_michango = 0; count_michango = 0; count_msgs = 0; count_sigs = 0
 
-    # Visitors - admin only
     for v in visitors[:100]:
         visitors_html += f"<div style='background:#e3f2fd;padding:8px;margin:4px 0;border-radius:8px;font-size:11px;text-align:left'>👁️ {str(v.get('created_at',''))[:19]} | IP: {v.get('place','')} | {v.get('msg','')[:80]}</div>"
     if not visitors_html and is_admin: visitors_html = "<p style='color:#999'>Hakuna visitors bado</p>"
+
+    # FUTA function - admin pekee
+    def futa_link(sid):
+        if is_admin:
+            return f" <a href='/?futa={sid}&key={ADMIN_PASSWORD}' style='color:red;font-size:11px'>[FUTA]</a>"
+        return ""
 
     for s in supporters:
         s_type = s.get('type','')
         if s_type == 'sahihi' or "SIG_ID" in str(s.get('msg','')):
             count_sigs += 1
             if is_admin:
-                sigs_html += f"<div style='background:#e8f5e9;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid #25D366;'>✅ <b>{s.get('name')} - {s.get('msg')} - {s.get('place')}</b> <a href='/?futa={s.get('id')}&key={ADMIN_PASSWORD}' style='color:red;font-size:11px'>[FUTA]</a></div>"
+                sigs_html += f"<div style='background:#e8f5e9;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid #25D366;'>✅ <b>{s.get('name')} - {s.get('msg')} - {s.get('place')}</b>{futa_link(s.get('id'))}</div>"
             continue
         if s_type == 'mchango' or "MCHANGO" in str(s.get('msg','')).upper() or "MCHANGO" in str(s.get('place','')).upper():
             count_michango += 1
             try:
-                amt_str = ''.join(filter(str.isdigit, s.get('msg','')+s.get('place','')))
-                if amt_str: total_michango += int(amt_str[:5])
+                # FIX: Chukua namba moja tu - 5000, sio 50005000
+                m = re.search(r'\d+', s.get('place','') or s.get('msg',''))
+                if m: total_michango += int(m.group(0))
             except: pass
-            michango_html += f"<div style='background:#fff8dc;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid gold;'>💰 <b>{s.get('name','')} - {s.get('place','')} - {s.get('msg','')}</b> <a href='/?futa={s.get('id')}&key={ADMIN_PASSWORD}' style='color:red;font-size:11px'>[FUTA]</a></div>"
+            michango_html += f"<div style='background:#fff8dc;padding:10px;border-radius:10px;margin:6px 0;text-align:left;color:#222;border-left:5px solid gold;'>💰 <b>{s.get('name','')} - {s.get('place','')} - {s.get('msg','')}</b>{futa_link(s.get('id'))}</div>"
         else:
             count_msgs += 1
-            if count_msgs <= 100: msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;'>💬 <b>{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}</b> <a href='/?futa={s.get('id')}&key={ADMIN_PASSWORD}' style='color:red;font-size:11px'>[FUTA]</a></div>"
+            if count_msgs <= 100: 
+                msgs_html += f"<div style='background:#f0f7f0;padding:12px;border-radius:10px;margin:8px 0;text-align:left;color:#222;border-left:5px solid #004d26;'>💬 <b>{s.get('name','')} ({s.get('place','')}) - {s.get('msg','')}</b>{futa_link(s.get('id'))}</div>"
 
     if not msgs_html: msgs_html = "<p style='color:#999'>Hakuna ujumbe bado</p>"
     if not michango_html: michango_html = "<p style='color:#999'>Hakuna mchango bado</p>"
@@ -186,7 +185,6 @@ def home(path):
     michango_dropdown = f"<div style='margin-top:15px'><button onclick=\"let x=document.getElementById('mchango-list'); x.style.display=x.style.display=='none'?'block':'none'\" style='background:#FFD700;color:#000;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer'>▼ ONA WALIOTUMA WOTE ({count_michango})</button><div id='mchango-list' style='display:none; max-height:350px; overflow-y:auto; border:2px solid gold; border-radius:12px; margin-top:10px; padding:10px; background:#fff;'>{michango_html}</div></div>"
     msgs_dropdown = f"<div style='margin-top:10px'><button onclick=\"let x=document.getElementById('msg-list'); x.style.display=x.style.display=='none'?'block':'none'\" style='background:#004d26;color:white;border:none;padding:12px 15px;border-radius:10px;font-weight:bold;width:100%;cursor:pointer'>▼ ONA UJUMBE WOTE ({count_msgs})</button><div id='msg-list' style='display:none; max-height:350px; overflow-y:auto; border:2px solid #004d26; border-radius:12px; margin-top:10px; padding:10px; background:#fff;'>{msgs_html}</div></div>"
 
-    # ===== HAPA NDIPO FIX KUBWA =====
     if is_admin:
         sigs_dropdown = f"<div style='margin-top:10px'><div style='background:#25D366;color:white;padding:12px 15px;border-radius:10px;font-weight:bold;'>▼ SAHIHI ZOTE ({count_sigs}) - ADMIN</div><div style='max-height:500px; overflow-y:auto; border:2px solid #25D366; border-radius:12px; margin-top:10px; padding:10px; background:#fff;'>{sigs_html}</div></div>"
         visitors_dropdown = f"<div style='margin-top:15px'><div style='background:#2196F3;color:white;padding:12px 15px;border-radius:10px;font-weight:bold;'>▼ WALIOTEMBELEA ({total_views})</div><div style='max-height:400px; overflow-y:auto; border:2px solid #2196F3; border-radius:12px; margin-top:10px; padding:10px; background:#fff;'>{visitors_html}</div></div>"
